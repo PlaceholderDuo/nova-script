@@ -176,11 +176,10 @@ class Engine:
             menu_mode.set_items(menu_items)
         else:
             menu_mode.set_items([
-                {"label": "SEQ", "mode": "sequencer", "color": "AMBER_HIGH"},
-                {"label": "MIX", "mode": "mixer", "color": "GREEN_HIGH"},
-                {"label": "FX", "mode": "effects", "color": "RED_HIGH"},
-                {"label": "PERF", "mode": "performance", "color": "AMBER_HIGH"},
-                {"label": "DEV", "mode": "device", "color": "GREEN_HIGH"},
+                {"label": "PERF", "mode": "performance", "color": "RED_HIGH", "x": 0, "y": 6, "w": 2, "h": 2},
+                {"label": "CLIP", "mode": "performance", "color": "RED_MED", "x": 2, "y": 6, "w": 2, "h": 2},
+                {"label": "SEQ", "mode": "sequencer", "color": "AMBER_HIGH", "x": 4, "y": 6, "w": 2, "h": 2},
+                {"label": "MIX", "mode": "mixer", "color": "GREEN_HIGH", "x": 0, "y": 4, "w": 2, "h": 2},
             ])
 
         self.mode_manager.register(menu_mode)

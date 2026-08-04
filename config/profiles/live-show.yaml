@@ -26,11 +26,10 @@ ui:
 modes:
   menu:
     items:
-      - {label: "SEQ", mode: "sequencer", color: "AMBER_HIGH"}
-      - {label: "MIX", mode: "mixer", color: "GREEN_HIGH"}
-      - {label: "PERF", mode: "performance", color: "AMBER_HIGH"}
-      - {label: "FX", mode: "effects", color: "RED_HIGH"}
-      - {label: "DEV", mode: "device", color: "GREEN_HIGH"}
+      - {label: "PERF", mode: "performance", color: "RED_HIGH", x: 0, y: 6, w: 2, h: 2}
+      - {label: "CLIP", mode: "performance", color: "RED_MED", x: 2, y: 6, w: 2, h: 2}
+      - {label: "SEQ", mode: "sequencer", color: "AMBER_HIGH", x: 4, y: 6, w: 2, h: 2}
+      - {label: "MIX", mode: "mixer", color: "GREEN_HIGH", x: 0, y: 4, w: 2, h: 2}
 
   sequencer:
     rows: 7
@@ -40,6 +39,25 @@ modes:
   mixer:
     tracks_per_bank: 8
     fader_rows: 7
+
+mixer:
+  channels:
+    - {index: 0, alias: "Track 1", output: "OSC", curve: "linear", osc_addr: "/track/1/volume"}
+    - {index: 1, alias: "Track 2", output: "OSC", curve: "linear", osc_addr: "/track/2/volume"}
+    - {index: 2, alias: "Track 3", output: "OSC", curve: "linear", osc_addr: "/track/3/volume"}
+    - {index: 3, alias: "Track 4", output: "OSC", curve: "linear", osc_addr: "/track/4/volume"}
+    - {index: 4, alias: "Track 5", output: "MIDI", curve: "linear", midi_channel: 0, midi_cc: 21}
+    - {index: 5, alias: "Track 6", output: "MIDI", curve: "linear", midi_channel: 0, midi_cc: 22}
+    - {index: 6, alias: "Track 7", output: "MIDI", curve: "linear", midi_channel: 0, midi_cc: 23}
+    - {index: 7, alias: "Track 8", output: "MIDI", curve: "linear", midi_channel: 0, midi_cc: 24}
+    - {index: 8, alias: "Track 9", output: "OSC", curve: "linear", osc_addr: "/track/9/volume"}
+    - {index: 9, alias: "Track 10", output: "OSC", curve: "linear", osc_addr: "/track/10/volume"}
+    - {index: 10, alias: "Track 11", output: "OSC", curve: "linear", osc_addr: "/track/11/volume"}
+    - {index: 11, alias: "Track 12", output: "OSC", curve: "linear", osc_addr: "/track/12/volume"}
+    - {index: 12, alias: "Force Pad 1", output: "MIDI", curve: "linear", midi_channel: 0, midi_cc: 25}
+    - {index: 13, alias: "Force Pad 2", output: "MIDI", curve: "linear", midi_channel: 0, midi_cc: 26}
+    - {index: 14, alias: "Force Pad 3", output: "MIDI", curve: "linear", midi_channel: 0, midi_cc: 27}
+    - {index: 15, alias: "Force Pad 4", output: "MIDI", curve: "linear", midi_channel: 0, midi_cc: 28}
 
 screensaver:
   cycle_enabled: false

@@ -156,6 +156,7 @@ class SettingsScreen(ModalScreen):
             yield Static("")
             with Horizontal():
                 yield Button("Save & Close", variant="primary", id="save-settings")
+                yield Button("Mixer Setup", id="open-mixer")
                 yield Button("Cancel", id="close-settings")
 
     def on_button_pressed(self, event: Button.Pressed):
@@ -174,6 +175,73 @@ class SettingsScreen(ModalScreen):
             if d: ui["downbeat_flash"] = str(d)
             if dc: ui["downbeat_color"] = str(dc)
             self.dismiss(self._config)
+        elif event.button.id == "open-mixer":
+            self.app.push_screen(MixerSettingsScreen(self._config))
+
+
+class MixerSettingsScreen(ModalScreen):
+    """Mixer channel configuration — per-channel output, curve, alias."""
+    CSS = """
+        MixerSettingsScreen {
+            align: center middle;
+        }
+        #mixer-dialog {
+            width: 62;
+            height: 30;
+            border: thick $primary;
+            background: $surface;
+            padding: 1;
+        }
+        #mixer-list {
+            height: 20;
+            border: solid $border;
+            overflow-y: scroll;
+        }
+    """
+
+    BINDINGS = [("escape", "dismiss", "Close")]
+
+    def __init__(self, config: dict):
+        super().__init__()
+        self._config = config
+        self._channels = config.get("mixer", {}).get("channels", [])
+        if not self._channels:
+            self._channels = [self._default_channel(i) for i in range(16)]
+
+    @staticmethod
+    def _default_channel(i: int) -> dict:
+        return {
+            "index": i,
+            "alias": f"Track {i+1}",
+            "output": "OSC",
+            "curve": "linear",
+            "osc_addr": f"/track/{i+1}/volume",
+            "midi_channel": 0,
+            "midi_cc": 21 + i,
+        }
+
+    def compose(self) -> ComposeResult:
+        with Container(id="mixer-dialog"):
+            yield Static("Mixer Channel Configuration")
+            yield Static("(each channel: output type, curve, alias)")
+            yield Static("")
+            yield ListView(id="mixer-list")
+            yield Static("")
+            with Horizontal():
+                yield Button("Close", variant="primary", id="close-mixer")
+
+    def on_mount(self):
+        lst = self.query_one("#mixer-list", ListView)
+        for ch in self._channels:
+            alias = ch.get("alias", f"Track {ch['index']+1}")
+            out = ch.get("output", "OSC")
+            curve = ch.get("curve", "linear")
+            label = f"  CH{ch['index']+1:2d}: {alias:20s} [{out:4s}] curve={curve}"
+            lst.append(ListItem(Label(label)))
+
+    def on_button_pressed(self, event: Button.Pressed):
+        if event.button.id == "close-mixer":
+            self.dismiss()
 
 
 class ProfileScreen(ModalScreen):

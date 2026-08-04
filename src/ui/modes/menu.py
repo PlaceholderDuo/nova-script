@@ -1,5 +1,7 @@
+"""
+Menu Mode — spatially arranged 2×2 mode blocks with distinct colors.
+"""
 import time
-from typing import Optional
 
 from src.controllers.base import GridEvent, ControlEvent, LogicalColor
 from src.ui.mode import Mode
@@ -10,16 +12,11 @@ class MenuMode(Mode):
         super().__init__("menu", grid, controller)
         self._on_mode_select = on_mode_select
         self._items: list[dict] = []
-        self._selected_index: int = -1
         self._last_press_time: float = 0.0
         self._debounce_ms: int = 100
-        self._page: int = 0
-        self._items_per_page: int = 8
 
     def set_items(self, items: list[dict]):
         self._items = items
-        self._page = 0
-        self._selected_index = -1
 
     def enter(self):
         self._render()
@@ -37,13 +34,16 @@ class MenuMode(Mode):
             return
         self._last_press_time = now
 
-        start_idx = self._page * self._items_per_page
-        item_idx = start_idx + event.x + event.y * 8
+        for item in self._items:
+            ix = item.get("x", 0)
+            iy = item.get("y", 0)
+            iw = item.get("w", 1)
+            ih = item.get("h", 1)
 
-        if item_idx < len(self._items):
-            item = self._items[item_idx]
-            if self._on_mode_select and "mode" in item:
-                self._on_mode_select(item["mode"])
+            if ix <= event.x < ix + iw and iy <= event.y < iy + ih:
+                if self._on_mode_select and "mode" in item:
+                    self._on_mode_select(item["mode"])
+                return
 
     def handle_control_event(self, event: ControlEvent):
         if not event.event_type.name.endswith("_PRESS"):
@@ -56,22 +56,18 @@ class MenuMode(Mode):
                 if self._on_mode_select and "mode" in item:
                     self._on_mode_select(item["mode"])
 
-        elif event.control_id >= 100:
-            col_idx = event.control_id - 100
-            total_pages = (len(self._items) - 1) // self._items_per_page + 1
-            self._page = (self._page + 1) % total_pages
-            self._render()
-
     def _render(self):
         self.clear()
-        start_idx = self._page * self._items_per_page
-
-        for i in range(min(self._items_per_page, len(self._items) - start_idx)):
-            item = self._items[start_idx + i]
-            x = i % 8
-            y = i // 8
+        for item in self._items:
+            ix = item.get("x", 0)
+            iy = item.get("y", 0)
+            iw = item.get("w", 1)
+            ih = item.get("h", 1)
             color_name = item.get("color", "AMBER_HIGH")
             color = LogicalColor[color_name]
-            self.grid.set_cell(x, y, color)
 
+            for dy in range(ih):
+                for dx in range(iw):
+                    if 0 <= ix + dx < 8 and 0 <= iy + dy < 8:
+                        self.grid.set_cell(ix + dx, iy + dy, color)
         self.commit()
