@@ -880,5 +880,44 @@ Following the user's specified testing order:
 3. After input works: build real UI modes page by page
 4. Git commit after each successful test milestone
 
+---
+
+## Entry #6 — 2026-08-03 — Input Diagnosis & Resolution
+
+### Source
+Daniel via Claude Code. Extensive debugging to resolve Launchpad Mini MK1 MIDI input not working.
+
+### Problem
+LED output worked perfectly from day one. MIDI input (button presses) produced zero events across all tests. 51 million poll iterations returned nothing. The research confirmed the Launchpad doesn't need drivers or SysEx init on macOS.
+
+### Root Causes (two factors)
+
+**Factor 1: Cascaded USB hubs.** The Launchpad was behind 3 chained USB hubs (USB3.2 → USB2.1 → USB2.1). USB MIDI input uses interrupt IN endpoints which are sensitive to transaction translator timing across cascaded hubs, especially on Apple Silicon. Output uses bulk/control transfers which tolerate this — explaining the one-way behavior.
+
+**Factor 2: No button presses during monitoring windows.** The earlier tests ran for 5-20 seconds, and buttons were not being pressed during those windows, so zero events was the correct result for those runs.
+
+**Resolution:** Plugged Launchpad directly via USB-C to A adapter (single hop). Button events immediately started flowing — 86 events in 30 seconds on raw rtmidi test, 12 events in 15 seconds through our full parsing pipeline. All grid coordinates verified against expected mapping.
+
+### Confirmed Working
+- Grid button press → Note On (0x90, note, 127) → parsed to GridEvent(x, y, pressed=True)
+- Grid button release → Note On (0x90, note, 0) → parsed to GridEvent(x, y, pressed=False)
+- 16 distinct note values (17-68) all mapped to correct (x,y) via formula x=note%16, y=7-(note//16)
+- Note mapping: row 0(0-7), row 1(16-23), row 2(32-39), row 3(48-55), row 4(64-71), row 5(80-87), row 6(96-103), row 7(112-119)
+
+### USB Device Tree
+```
+Launchpad Mini (vendor 0x1235, product 0x0036, USB 1.1 Full Speed)
+├── Interface @0: Audio Control (class 1, subclass 1, 0 endpoints)
+└── Interface @1: MIDI Streaming (class 1, subclass 3, 2 endpoints, MIDIServer exclusive)
+```
+
+### Next Actions
+1. Test circular buttons (top row + right column) with button monitor
+2. Build fuller UI mode interactions using button input
+3. Build Performance/Clip Launch mode
+4. Test auto-reconnect with cable bump
+5. Later: test with cascaded hub to isolate true root cause
+
+
 
 
