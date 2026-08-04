@@ -279,12 +279,10 @@ class MidiManager:
     def send_message(self, device_name: str, message: list[int], target: str = "main"):
         conn = self.devices.get(device_name)
         if conn is None:
-            logger.debug(f"Cannot send to {device_name}: unknown device")
             return
 
         if target == "main":
             if not conn.connected or conn.midi_out is None:
-                logger.debug(f"Cannot send to {device_name}: not connected")
                 return
             try:
                 conn.midi_out.send_message(message)
@@ -293,7 +291,6 @@ class MidiManager:
                 self._disconnect_device(device_name)
         else:
             if target not in conn.extra_outputs or conn.extra_outputs[target][1] is None:
-                logger.debug(f"Cannot send to {device_name}/{target}: not connected")
                 return
             try:
                 conn.extra_outputs[target][1].send_message(message)
