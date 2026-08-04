@@ -1745,3 +1745,92 @@ Session focused on polish: fixing the invisible startup wave, broken screensaver
 - `tools/test_integration.py` — New: end-to-end test script
 - `pyproject.toml` — websockets optional dependency
 - `BUILD_LOG.md` — This entry
+
+---
+
+## Entry #23 — 2026-08-04 — Instrument Mode: Push-Style Grid Instrument
+
+### Concept
+Transforms the Launchpad Mini MK1 into a grid-based instrument controller modeled after Ableton Live's Push and Akai Force. The full 8×8 grid becomes a scale-mapped playing surface where every pad maps to a musical note. Right column buttons control mode parameters. Full vision document: [`docs/INSTRUMENT_MODE.md`](docs/INSTRUMENT_MODE.md)
+
+### Architecture
+```
+InstrumentMode (src/ui/modes/instrument.py)
+├── Scale system: major / blues / chromatic (6-12 notes)
+├── Note calculator: scale_index, octave_shift, row_offset
+├── Row offset: configurable semitones per row (12, 2, 3, 4, 5)
+├── Right column controls (A-E)
+│   ├── A: Notes (GREEN) / Chords (AMBER)
+│   ├── B: Scale cycle → Major (GREEN) / Blues (AMBER) / Chromatic (RED)
+│   ├── C: Hold toggle → OFF (RED) / ON (GREEN)
+│   ├── D: ARP cycle → OFF (RED) / Up (GREEN) / Down (AMBER)
+│   └── E: ARP pattern → Normal (GREEN) / Chordal (AMBER) / Octaves (RED)
+├── A-button hold overlay: top row pads 1-5 show offset options
+├── ARP engine: BPM-synced, pattern-based with step advancement
+├── MIDI output: note ON/OFF with velocity 100
+└── Color system: RED_HIGH (roots), GREEN_HIGH (pressed), GREEN_MED (octave), AMBER_LOW (background)
+```
+
+### Grid Visual Design
+- **Root notes** — RED_HIGH (pads where note % 12 == root_note). 16 roots on major scale with octave offset.
+- **Pressed pad** — GREEN_HIGH (currently held down). Full brightness.
+- **Octave indicators** — GREEN_MED (same pitch class as pressed pad, different octave). ~70% brightness.
+- **Background** — AMBER_LOW (~40%) on all 64 pads. Every pad shows a playable scale note. Never dark, never harsh.
+
+### Controls Verified (virtualizer)
+| Control | States | Performance |
+|---------|--------|-------------|
+| Scale (B) | Major → Blues → Chromatic | Cycle + re-render on each press ✓ |
+| Hold (C) | OFF ↔ ON | Toggle, releases all on disable ✓ |
+| ARP (D) | OFF → Up → Down | 3-state cycle, BPM-synced ✓ |
+| ARP Pattern (E) | Normal → Chordal → Octaves | 3-state cycle ✓ |
+| Offset overlay | Hold A → top row 1-5 | ORANGE bg + GREEN current ✓ |
+
+### ARP Pattern System
+Customizable JSON files in `config/arp_patterns/`:
+
+| File | Description | Intervals |
+|------|-------------|-----------|
+| `normal.json` | Sequential scale notes | [0,1,2,3,4,5,6,7] |
+| `chordal.json` | Root, 7th, 3rd, 5th | [0,6,2,4,0,6,2,4] |
+| `octaves.json` | 3-octave span jumps | [0,7,14,7,0,7,14,7] |
+
+To customize: replace any file with same-named JSON containing `{"name": "...", "intervals": [...]}`. Intervals are semitone offsets applied per ARP step.
+
+### Note Calculation
+```
+For pad (x, y) with scale S, offset O, root R:
+  scale_idx   = x % len(S)
+  octave_up   = (x // len(S)) * 12
+  row_up      = y * O
+  note        = R + S[scale_idx] + octave_up + row_up
+```
+
+Example: Major scale [0,2,4,5,7,9,11], offset=12 (octaves), root=48:
+- (0,0) = 48+0+0+0 = 48 (C3)
+- (7,0) = 48+0+12+0 = 60 (C4)
+- (0,1) = 48+0+0+12 = 60 (C4)
+- (7,7) = 48+0+12+84 = 144
+
+### Engine Integration
+- Registered in `_setup_modes()` alongside other modes
+- Top-6 button shortcut (205 → "instrument")
+- BPM set via engine's `set_bpm()` pass-through
+- `midi_manager` passed for MIDI output
+- Mode name registered as "instrument" in mode manager
+
+### CLI Improvements (same session)
+- `nova-script virtualizer` — start backend + open browser GUI in one command
+- `nova-script virtualizer stop` — clean shutdown of virtualizer process + MIDI ports
+- Fixed `ControlEvent.pressed` AttributeError (derived `is_press` from `event_type.name`)
+- Optimized instrument mode tick to avoid re-rendering on every engine tick (only on state changes)
+
+### Files Changed
+- `src/ui/modes/instrument.py` — New: 423-line mode class
+- `src/engine.py` — Register instrument mode, Top-6 shortcut, fix ControlEvent.pressed bug
+- `src/main.py` — CLI `virtualizer [stop]` commands
+- `config/arp_patterns/normal.json` — New: sequential ARP pattern
+- `config/arp_patterns/chordal.json` — New: chord-tone ARP pattern
+- `config/arp_patterns/octaves.json` — New: octave-jump ARP pattern
+- `docs/INSTRUMENT_MODE.md` — New: full vision and specification document
+- `BUILD_LOG.md` — This entry
