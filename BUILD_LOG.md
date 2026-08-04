@@ -201,23 +201,119 @@ nova-script/
 
 ---
 
-## Entry Template (for future entries)
+## Entry #2 — 2026-08-03 — Core Engine, Device Manager, Menu Mode, Sequencer, Mixer
 
-### Entry #X — YYYY-MM-DD — Title
+### Source
+Daniel via Claude Code. First implementation pass.
 
-#### Source
-[Who requested / where did this come from]
+### Changes Made
+- **MIDI Manager** (`src/midi/manager.py`): Full port discovery and auto-reconnect system.
+  - Scans for devices by name substring match
+  - Polls every 500ms for port add/remove events
+  - Auto-reconnects on cable bump — detects port disappearance, tears down gracefully, scans until device reappears, restores state
+  - asyncio-safe MIDI event queue
+  - Connect/disconnect callbacks
+  - Tested: detects Launchpad Mini MK1 input and output ports
 
-#### Changes Made
-- [Change 1]
-- [Change 2]
+- **Color Map** (`src/controllers/color_map.py`): Logical color abstraction layer.
+  - `LogicalColor` enum with 27 values (OFF + 9 colors × 3 brightness levels)
+  - `MK1_COLOR_MAP`: maps logical colors to Launchpad Mini MK1 velocity bytes (red/green bit-packing: velocity = (green << 4) | red)
+  - `MK3_COLOR_PALETTE_INDEX`: placeholder for future RGB controllers using palette index approach
+  - `ColorMapper` class selects map based on device type
 
-#### Rationale
-[Why these changes]
+- **Base Controller** (`src/controllers/base.py`): Abstract `NovationController` base.
+  - `DeviceCapabilities` dataclass for capability introspection
+  - `GridEvent` and `ControlEvent` normalized event types
+  - Abstract `parse_midi()` and `send_led()` methods
+  - Local grid state tracking with `set_grid_color()`, `clear_grid()`, `refresh_grid()`
 
-#### Files Affected
-- `path/to/file.py` — [what changed]
+- **Launchpad Mini MK1** (`src/controllers/launchpad_mk1.py`): Full implementation.
+  - Grid pad note mapping: logical (0,0)=bottom-left → MIDI note = (7-y)*16+x
+  - Right column buttons parsed from notes [8, 24, 40, 56, 72, 88, 104, 120]
+  - Top row buttons parsed from CC 104-111
+  - LED output for grid, top row, and right column
+  - `_reset_to_session()` sends CC reset + SysEx layout select on connect
+  - Verified: LED output works (amber pads light up)
 
-#### Known Issues / Follow-ups
-- [Issue 1]
-- [Issue 2]
+- **Launchkey 49 MK2** (`src/controllers/launchkey_mk2.py`): Stub implementation.
+  - 16 velocity-sensitive pads (2 rows × 8 cols)
+  - 8 knobs, 8 faders, transport buttons parsed from CC
+  - Ready for full implementation when needed
+
+- **Logical Grid** (`src/layout/grid.py`): Grid abstraction with utility methods.
+  - `set_cell()`, `get_cell()`, `clear()`, `fill_rect()`, `fill_row()`, `fill_column()`
+  - `draw_text_horizontal()`, `draw_bar_vertical()` for mixer/display modes
+  - Dirty cell tracking for efficient LED updates
+  - `snapshot()` for TUI mirror
+
+- **Mode System** (`src/ui/mode.py`, `src/ui/mode_manager.py`):
+  - Abstract `Mode` base with `enter()`, `exit()`, `handle_grid_event()`, `handle_control_event()`, `tick()`
+  - `ModeManager` handles lifecycle: only one mode active at a time
+  - Mode switching preserves state, calls enter/exit
+
+- **Menu Mode** (`src/ui/modes/menu.py`): First working mode.
+  - Configurable grid of mode-select buttons with colors
+  - Top-row function buttons also select modes
+  - Right-column buttons cycle pages for >8 items
+  - Debounced input
+
+- **Step Sequencer Mode** (`src/ui/modes/sequencer.py`): Core functionality.
+  - 7 rows × 32 steps (8 visible, scrollable with pages)
+  - Toggle steps on/off by pressing grid pads
+  - Internal clock at configurable BPM and resolution (1/4 to 1/32)
+  - Play/pause, reset, page left/right via top row buttons
+  - Resolution up/down via right column buttons
+  - Sends MIDI note on for active steps to configured output
+  - Visual feedback: current step highlighted, active steps colored by row group
+
+- **Mixer Mode** (`src/ui/modes/mixer.py`): Volume faders.
+  - 8 tracks × 7 fader rows (0-100% resolution)
+  - Tap fader position to set volume
+  - Mute toggle in bottom row
+  - Green gradient for volume, red for muted
+
+- **Engine** (`src/engine.py`): Central event loop.
+  - YAML config loading
+  - Controller setup → MidiManager start (with initial connect) → mode setup
+  - Event loop reads from MIDI queue, dispatches to controllers/modes
+  - TUI broadcast: snapshots grid state every 50ms to queue.Queue
+
+- **TUI Companion** (`src/tui/app.py`): Textual-based grid mirror.
+  - 8×8 grid of colored cells mirroring Launchpad LED state
+  - Color mapping from LogicalColor enum names to terminal colors
+  - Mode indicator and device connection status
+  - Polls engine queue at 50ms intervals
+  - Runs in separate thread with its own asyncio loop via Textual
+
+- **Entry Point** (`src/main.py`): Headless mode by default, `--tui` flag for TUI.
+  - `python -m src.main` → headless engine only
+  - `python -m src.main --tui` → engine + TUI companion
+
+### Known Issues
+- **Launchpad input not receiving**: The Launchpad Mini MK1 accepts LED commands but does not send button press MIDI messages. Likely cause: the device is in a custom mode set by the Live Show Manager / REAPER integration. The code handles input correctly but needs the Launchpad in default Session mode. Added `_reset_to_session()` in `on_connect` to send CC reset + SysEx layout select. May need physical power-cycle or different SysEx initialization.
+
+### Files Affected
+- `src/midi/manager.py` — New: full MIDI port management with auto-reconnect
+- `src/controllers/color_map.py` — New: logical-to-hardware color mapping
+- `src/controllers/base.py` — New: abstract controller base
+- `src/controllers/launchpad_mk1.py` — New: Launchpad Mini MK1 implementation
+- `src/controllers/launchkey_mk2.py` — New: Launchkey 49 MK2 stub
+- `src/layout/grid.py` — New: logical grid with utility methods
+- `src/ui/mode.py` — New: abstract Mode base
+- `src/ui/mode_manager.py` — New: mode lifecycle manager
+- `src/ui/modes/menu.py` — New: menu navigation mode
+- `src/ui/modes/sequencer.py` — New: step sequencer mode
+- `src/ui/modes/mixer.py` — New: mixer fader mode
+- `src/engine.py` — New: central event loop
+- `src/tui/app.py` — New: Textual TUI grid mirror
+- `src/main.py` — New: entry point
+- `src/__init__.py` — Updated: version only
+- `src/controllers/__init__.py` — Updated: re-exports
+
+### Next Actions
+1. Debug Launchpad input — try physical power-cycle, verify SysEx reset sequence
+2. Implement OSC server/client for Reaper communication
+3. Build Message Display Mode with scrolling text on LED grid
+4. Test with Launchkey 49 MK2
+5. Add MIDI clock sync from external sources
+
