@@ -60,7 +60,7 @@ class Mode(ABC):
         self._pending_x = None
         self._pending_y = None
 
-        if elapsed < self._debounce_ms:
+        if elapsed < 0.5:  # sub-millisecond noise filter only
             return "invalid"
         if elapsed >= self._long_press_ms:
             return "long"
