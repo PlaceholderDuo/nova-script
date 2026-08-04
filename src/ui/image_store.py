@@ -95,10 +95,10 @@ DEFAULT_IMAGES: dict[int, dict] = {
         "grid": [
             ["OFF", "OFF", "OFF", "OFF", "OFF", "OFF", "OFF", "OFF"],
             ["OFF", "AMBER_HIGH", "AMBER_HIGH", "OFF", "OFF", "AMBER_HIGH", "AMBER_HIGH", "OFF"],
-            ["OFF", "OFF", "OFF", "AMBER_HIGH", "AMBER_HIGH", "OFF", "OFF", "OFF"],
+            ["AMBER_HIGH", "OFF", "OFF", "AMBER_HIGH", "AMBER_HIGH", "OFF", "OFF", "AMBER_HIGH"],
             ["AMBER_HIGH", "OFF", "OFF", "OFF", "OFF", "OFF", "OFF", "AMBER_HIGH"],
-            ["OFF", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "OFF"],
-            ["OFF", "OFF", "OFF", "OFF", "OFF", "OFF", "OFF", "OFF"],
+            ["OFF", "AMBER_HIGH", "OFF", "OFF", "OFF", "OFF", "AMBER_HIGH", "OFF"],
+            ["OFF", "OFF", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "OFF", "OFF"],
             ["OFF", "OFF", "OFF", "OFF", "OFF", "OFF", "OFF", "OFF"],
             ["OFF", "OFF", "OFF", "OFF", "OFF", "OFF", "OFF", "OFF"],
         ],
