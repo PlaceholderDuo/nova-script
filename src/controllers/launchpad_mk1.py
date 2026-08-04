@@ -1,3 +1,5 @@
+import time
+import logging
 from typing import Optional
 
 from .base import (
@@ -6,6 +8,8 @@ from .base import (
     DeviceCapabilities,
     LogicalColor,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class LaunchpadMiniMK1(NovationController):
@@ -90,19 +94,24 @@ class LaunchpadMiniMK1(NovationController):
 
     def on_connect(self):
         self._reset_to_session()
+        self._kick_input_buffer()
         self.clear_grid()
         self._clear_top_row()
         self._clear_right_column()
+        logger.info(f"{self.capabilities.name}: initialized, input buffer kicked")
 
     def on_disconnect(self):
+        logger.info(f"{self.capabilities.name}: disconnected")
         pass
 
     def _reset_to_session(self):
         self.midi_manager.send_message(self.device_name, [0xB0, 0x00, 0x00])
-        self.midi_manager.send_message(
-            self.device_name,
-            [0xF0, 0x00, 0x20, 0x29, 0x02, 0x0D, 0x01, 0x00, 0xF7]
-        )
+
+    def _kick_input_buffer(self):
+        for i in range(8):
+            self.midi_manager.send_message(self.device_name, [0xB0, 0x68 + i, 0x33])
+            self.midi_manager.send_message(self.device_name, [0xB0, 0x68 + i, 0x00])
+        self.midi_manager.send_message(self.device_name, [0xB0, 0x00, 0x00])
 
     def _clear_top_row(self):
         for i in range(8):

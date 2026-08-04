@@ -317,3 +317,366 @@ Daniel via Claude Code. First implementation pass.
 4. Test with Launchkey 49 MK2
 5. Add MIDI clock sync from external sources
 
+---
+
+## Entry #3 — 2026-08-03 — Targeted Research Session: Hardware Protocols & Integration
+
+### Source
+Daniel via Claude Code. Research session to resolve blocked Launchpad input, gather protocol references for Launchkey MK2, REAPER OSC, and future hardware support.
+
+---
+
+### 1. Launchpad Mini MK1 — Complete Protocol Reference
+
+**Source:** FMMT666/launchpad.py (authoritative open-source library), Novation programmer's docs, GitHub issues
+
+#### Critical Finding: No SysEx Initialization Needed
+The Launchpad Mini MK1 is **protocol-identical to the original Launchpad MK1**. It needs NO SysEx initialization. Opening the MIDI port is sufficient. It boots into "Session mode" automatically on USB power.
+
+#### The "LEDs Work, Buttons Don't" Bug — KNOWN ISSUE
+This is a documented PyGame/ALSA MIDI driver bug affecting the MK1. The input buffer gets into a bad state on port re-open after a program restart.
+
+**Workaround (applied in `_kick_input_buffer()`):**
+```
+# Toggle all automap LEDs to kick the input buffer:
+for i in range(8):
+    B0 (0x68+i) 0x33   # amber on
+    B0 (0x68+i) 0x00   # off
+B0 00 00               # reset all LEDs
+```
+Alternatively: physically pressing any automap button after program start works too.
+
+#### Grid Pad Note Mapping (confirmed correct)
+```
+Row 0 (top):    0   1   2   3   4   5   6   7
+Row 1:         16  17  18  19  20  21  22  23
+Row 2:         32  33  34  35  36  37  38  39
+Row 3:         48  49  50  51  52  53  54  55
+Row 4:         64  65  66  67  68  69  70  71
+Row 5:         80  81  82  83  84  85  86  87
+Row 6:         96  97  98  99 100 101 102 103
+Row 7 (bot):  112 113 114 115 116 117 118 119
+```
+Sent as Note On (0x90) channel 1. Velocity 127 = press, 0 = release.
+
+#### Top Row (Automap) Buttons — CC 104-111
+```
+B0 68 → B0 6F (left to right). Value 127 = press, 0 = release.
+LED control: B0 (0x68+index) <color>
+```
+
+#### Right Column Buttons — Notes 8, 24, 40, 56, 72, 88, 104, 120
+```
+Notes top-to-bottom: 8, 24, 40, 56, 72, 88, 104, 120
+LED control: 90 <note> <color>
+```
+
+#### LED Color Encoding (confirmed correct)
+Formula: `color = (green << 4) | red` where green, red ∈ {0,1,2,3}
+
+| Color | R | G | Hex | Dec |
+|-------|---|---|-----|-----|
+| Off | 0 | 0 | 0x00 | 0 |
+| Red Low | 1 | 0 | 0x01 | 1 |
+| Red Med | 2 | 0 | 0x02 | 2 |
+| Red Full | 3 | 0 | 0x03 | 3 |
+| Green Low | 0 | 1 | 0x10 | 16 |
+| Green Med | 0 | 2 | 0x20 | 32 |
+| Green Full | 0 | 3 | 0x30 | 48 |
+| Amber Low | 1 | 1 | 0x11 | 17 |
+| Amber Med | 2 | 2 | 0x22 | 34 |
+| Amber Full | 3 | 3 | 0x33 | 51 |
+| Yellow-green Low | 1 | 2 | 0x21 | 33 |
+| Red-orange Low | 2 | 1 | 0x12 | 18 |
+
+**Rapid LED Update Mode** (for batch LED changes):
+```
+Send Note On on channel 3 (0x92): 92 <led1> <led2>
+Resets cursor: B0 01 00
+Writes pairs sequentially across all 80 LEDs:
+  8×8 grid (row 0→7, left→right)
+  → right column (top→bottom)
+  → automap (left→right)
+```
+
+**Reset command:** `B0 00 00` (all LEDs off). Confirmed.
+
+**No flashing, no double-buffering on MK1.** These are MK2/Pro features.
+
+**Mode switching:** Cannot be done programmatically on MK1. The front-panel buttons (Session, User 1, User 2, Drum Rack, Mixer) are physical-only. For MK2+, layout selectable via: `F0 00 20 29 02 10 22 <mode> F7`
+
+---
+
+### 2. macOS CoreMIDI Port Sharing
+
+**Source:** RtMidi.cpp source code, CoreMIDI architecture docs
+
+**CoreMIDI broadcasts to ALL clients.** Multiple applications can simultaneously receive from the same physical device. mach_port architecture is inherently multicast.
+
+**No exclusive mode.** Unlike Windows MIDI or ALSA, there's no `kMIDIPropertyExclusive` flag or mechanism to claim exclusive access. `MIDIPortConnectSource()` just adds another subscriber.
+
+**python-rtmidi uses a singleton MIDIClientRef:**
+```cpp
+static MIDIClientRef CoreMidiClientSingleton = 0;
+// All MidiIn/MidiOut instances share one client
+```
+
+**Virtual ports do NOT intercept physical device traffic.** MIDISourceCreate/MIDIDestinationCreate create separate virtual endpoints.
+
+**Audio MIDI Setup cannot redirect exclusively.** It provides device on/off and virtual routing only.
+
+**Conclusion for our situation:** The "Live Show Manager" app listing the Launchpad does NOT consume input exclusively. The Launchpad not sending button events is the buffer bug, not port contention. Verified by our raw python-rtmidi test showing zero messages even with all filters disabled.
+
+---
+
+### 3. Launchkey 49 MK2 — Complete Protocol Reference
+
+**Source:** Novation Launchkey MK2 Programmer's Reference Guide v1.01 (8 pages)
+
+#### Two MIDI Ports
+- **MIDI (port 1):** Keys, pitch/mod wheels always here. Basic mode controls here.
+- **InControl (port 2):** Extended mode communication. All lighting/mode commands MUST be sent here.
+
+#### Mode Switching (via InControl port, Channel 16)
+| Operation | Message | Hex |
+|-----------|---------|-----|
+| Enter Extended | Note C-1, Ch16, Vel 127 | `9F 0C 7F` |
+| Exit Extended | Note C-1, Ch16, Vel 0 | `9F 0C 00` |
+| Pots → InControl | C#-1, Ch16, Vel 127 | `9F 0D 7F` |
+| Sliders → InControl | D-1, Ch16, Vel 127 | `9F 0E 7F` |
+| Drum Pads → InControl | D#-1, Ch16, Vel 127 | `9F 0F 7F` |
+| Query LED states | B-1, Ch16, Vel 0 | `9F 0B 00` |
+
+#### Pad MIDI Notes (16 velocity-sensitive pads, 2×8 grid)
+**Basic Mode (Channel 16, InControl port):** Notes 36-51 (C1 to D#2)
+```
+Row 0: 36 37 38 39 40 41 42 43   (C1–G1)
+Row 1: 44 45 46 47 48 49 50 51   (G#1–D#2)
+```
+**Extended Mode (Channel 16, InControl port):** 
+```
+Row 0: 112 113 114 115 116 117 118 119   (E7–B7)
+Row 1:  96  97  98  99 100 101 102 103   (C6–G6)
+```
+
+#### Pad LED Control — RGB via Fixed Color Palette
+Light pad: `9F <note> <color_index>` (Note On, Ch16, velocity = color index 1-127)
+Off: `9F <note> 0`
+
+**Flashing LEDs** (sync to MIDI clock): Channel 2
+```
+91 <note> <color>  — Flash between current and new color
+9F <note> 0        — Stop
+```
+
+**Pulsing LEDs** (brightness modulation, sync to MIDI clock): Channel 3
+```
+92 <note> <color>  — Pulse
+9F <note> 0        — Stop
+```
+
+**Reset all pad LEDs:** `BF 00 00` (CC 0, Ch16, Val 0)
+
+#### Control Mappings (all on MIDI port, CC messages)
+
+**Knobs (8):** CC 21-28 (0x15-0x1C), range 0-127
+**Faders (8):** CC 41-48 (0x29-0x30), range 0-127
+**Master Fader (9th):** CC 7 (0x07)
+**Transport buttons (momentary):**
+| Button | CC Dec |
+|--------|--------|
+| Rewind | 112 |
+| Forward | 113 |
+| Stop | 114 |
+| Play | 115 |
+| Loop | 116 |
+| Record | 117 |
+| Track Left | 103 |
+| Track Right | 102 |
+
+#### SysEx Device ID
+Device Inquiry Reply: `F0 7E 00 06 02 00 20 29 7A 00 FM1 FM2 R1 R2 R3 R4 F7`
+- Manufacturer: 00 20 29 (Novation)
+- Product: 7A 00 (Launchkey MK2)
+- FM1: 01 = 49-key model
+- R1-R4: BCD firmware version
+
+#### No Display/LCD on MK2
+The Launchkey 49 MK2 has no screen. MK3/MK4 models have screens.
+
+---
+
+### 4. REAPER OSC API — Complete Reference
+
+**Source:** Default.ReaperOSC config, REAPER OSC documentation
+
+#### Configuration
+- Preferences → Control/OSC/web → Add → OSC
+- Pattern file: `.ReaperOSC` format
+- Port: configurable (REAPER listens and sends on separate ports)
+
+#### Track Control (incoming: controller → REAPER)
+| Parameter | OSC Address | Values |
+|-----------|------------|--------|
+| Volume | `/track/{n}/volume` | 0.0–1.0 or dB |
+| Pan | `/track/{n}/pan` | -1.0 to 1.0 |
+| Mute | `/track/{n}/mute` | 0/1 |
+| Solo | `/track/{n}/solo` | 0/1 |
+| Rec Arm | `/track/{n}/recarm` | 0/1 |
+| Track Select | `/track/{n}/select` | 0/1 |
+| Monitor | `/track/{n}/monitor` | 0/1 |
+| Track Color | `/track/{n}/trackcolor` | int (RGB) |
+
+#### FX Control
+| Parameter | OSC Address |
+|-----------|------------|
+| FX Bypass | `/track/{n}/fx/{k}/bypass` |
+| FX Wet/Dry | `/track/{n}/fx/{k}/wetdry` |
+| FX Parameter | `/track/{n}/fx/{k}/fxparam/{p}/value` |
+| Open FX Chain | `/track/{n}/fx/chain/open` |
+| Focused FX Name | `/focusedfx/name` (REAPER sends) |
+| Focused FX Param | `/focusedfx/param/{p}/value` |
+
+#### Send/Receive Control
+| Parameter | OSC Address |
+|-----------|------------|
+| Send Volume | `/track/{n}/send/{k}/volume` |
+| Send Pan | `/track/{n}/send/{k}/pan` |
+| Send Mute | `/track/{n}/send/{k}/mute` |
+| Receive Volume | `/track/{n}/receive/{k}/volume` |
+
+#### Transport
+| Control | OSC Address |
+|---------|------------|
+| Play | `/play` (1=on, 0=off) |
+| Stop | `/stop` |
+| Record | `/record` |
+| Pause | `/pause` |
+| Loop | `/repeat` |
+| Rewind | `/rewind` |
+| Forward | `/forward` |
+| Tempo | `/tempo` (float BPM) |
+| Position | `/time` (seconds) |
+
+#### Feedback (REAPER → controller)
+| Data | OSC Address |
+|------|------------|
+| Track VU (L) | `/track/{n}/vu` (float 0-1) |
+| Track VU (stereo) | `/track/{n}/vu` (2 floats) |
+| Master VU | `/master/vu` |
+| Beat Position | `/beat` (float, beats since start) |
+| Time Signature Num | `/timesig/numerator` |
+| Play State | `/play` (sent back) |
+| Loop State | `/repeat` (sent back) |
+| Track Name | `/track/{n}/name` (REAPER sends) |
+| FX Name | `/track/{n}/fx/{k}/name` (REAPER sends) |
+| FX Param Name | `/track/{n}/fx/{k}/fxparam/{p}/name` |
+
+#### Actions & Custom
+```
+# Trigger REAPER action by ID:
+/action <int_id>
+
+# Trigger by string command ID:
+/action/str <string_id>
+
+# ReaScript can send custom OSC via:
+reaper.OscLocalMessageToHost("custom/message", value)
+```
+
+#### OSC Bundles
+Supported. Bundles processed atomically with timetags for sample-accurate timing.
+
+#### .ReaperOSC Pattern Format
+```
+# Comment
+DEVICE_TRACK_COUNT 8
+DEVICE_FX_COUNT 4
+DEVICE_FX_PARAM_COUNT 16
+DEVICE_TRACK_FOLLOWS DEVICE       # or LAST_TOUCHED or FOCUSED
+DEVICE_FX_FOLLOWS DEVICE
+TRACK_VOLUME n/track/@/volume     # @ = track index substitution
+TRACK_MUTE n/track/@/mute
+VU_TRACK n/track/@/vu
+PLAY /play
+ACTION i/action/@
+```
+
+---
+
+### 5. Nova-Script OSC Namespace (Revised)
+
+Based on REAPER research, our OSC namespace maps cleanly:
+
+```
+# Controller → REAPER
+/nova/track/{n}/volume        f 0.0-1.0    → REAPER /track/{n}/volume
+/nova/track/{n}/pan           f -1.0-1.0   → REAPER /track/{n}/pan
+/nova/track/{n}/mute          i 0/1        → REAPER /track/{n}/mute
+/nova/track/{n}/fx/{k}/bypass  i 0/1       → REAPER /track/{n}/fx/{k}/bypass
+/nova/track/{n}/fx/{k}/param/{p} f 0.0-1.0 → REAPER /track/{n}/fx/{k}/fxparam/{p}/value
+/nova/transport/play          i 0/1        → REAPER /play
+/nova/transport/stop          —            → REAPER /stop
+/nova/transport/record        i 0/1        → REAPER /record
+/nova/action/{id}             i           → REAPER /action
+
+# REAPER → Controller
+/nova/display/message         s "text"     → Show scrolling message on Launchpad
+/nova/mode/set                s "name"     → Switch active mode via OSC
+/nova/track/{n}/vu            f 0.0-1.0    → From REAPER /track/{n}/vu
+/nova/beat                    f position   → From REAPER /beat
+/nova/play_state              i 0/1/2      → From REAPER /play + /stop
+```
+
+---
+
+### 6. Our OSC Architecture (Design)
+
+Based on research, the cleanest approach for Reaper ↔ nova-script:
+
+**Option A: REAPER's built-in OSC control surface**
+- Configure REAPER with a `.ReaperOSC` file that maps to `/nova/...` namespace
+- REAPER's built-in OSC support handles track/FX control natively
+- Limited to what REAPER natively supports
+
+**Option B: ReaScript bridge (recommended for custom behavior)**
+- Write a small ReaScript (Lua) that creates a TCP/UDP OSC bridge
+- ReaScript calls `reaper.OscLocalMessageToHost()` to control REAPER internally
+- ReaScript uses Lua networking to send/receive custom OSC messages to nova-script
+- Full flexibility: any action, any parameter, custom feedback
+
+**Option C: Hybrid**
+- Use REAPER's built-in OSC for standard track/FX control
+- Use ReaScript for custom messages (display, mode switching, beat sync)
+
+---
+
+### 7. Code Changes Applied (this entry)
+
+- **Launchpad MK1 `on_connect()`**: Replaced dummy `_enter_programmer_mode()` with actual `_kick_input_buffer()` that toggles all 8 automap LEDs (amber on/off) to force the MIDI input buffer to start delivering events. This is the known workaround for the PyGame/ALSA buffer bug.
+- Removed unnecessary SysEx layout select (not supported on MK1)
+- MidiManager does initial `_try_connect_device()` during `start()` for immediate connection
+
+---
+
+### 8. Open Questions Resolved
+- ✅ **MIDI input receiving**: Not a port contention issue. Buffer bug with known workaround.
+- ❓ **Clock master**: Still pending — REAPER can provide beat position via OSC `/beat`. Akai Force can provide MIDI clock.
+- ❓ **Message display character set**: Still pending — need to design 8×8 pixel font for scrolling text.
+- ✅ **Launchkey pad arrangement**: 2 rows × 8 cols. Confirmed note mappings for Basic and Extended modes.
+- ✅ **Launchkey LED colors**: Fixed 128-color palette via velocity, not direct RGB. Flashing on Ch2, pulsing on Ch3.
+- ✅ **REAPER OSC**: Full API documented. `.ReaperOSC` pattern file format confirmed.
+
+### Files Changed
+- `src/controllers/launchpad_mk1.py` — Added `_kick_input_buffer()`, removed unused SysEx, added logging
+- `BUILD_LOG.md` — This entry
+
+### Next Actions
+1. Test Launchpad input with automap kick workaround
+2. Build ReaperOSC config file bridge
+3. Implement OSC server/client in nova-script (`src/osc/`)
+4. Fix Launchkey 49 MK2 controller to use InControl port (Channel 16), Extended mode, correct pad notes
+5. Build Message Display Mode with character-to-grid font
+6. Add MIDI clock sync options (internal/OSC/MIDI)
+
+
