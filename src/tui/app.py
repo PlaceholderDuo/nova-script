@@ -3,7 +3,7 @@ Nova-Script TUI — profile management, device status, settings, grid mirror.
 """
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, Container, ScrollableContainer
-from textual.widgets import Static, Header, Footer, Button, ListView, ListItem, Label
+from textual.widgets import Static, Header, Footer, Button, ListView, ListItem, Label, Select
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.binding import Binding
@@ -69,30 +69,29 @@ class LaunchpadGrid(Vertical):
 
 
 class SettingsScreen(ModalScreen):
-    """Settings modal — BPM clock sources, timeouts, etc."""
+    """Settings modal — configurable BPM clock sources, timeouts, etc."""
     CSS = """
         SettingsScreen {
             align: center middle;
         }
         #settings-dialog {
-            width: 56;
-            height: 24;
+            width: 58;
+            height: 22;
             border: thick $primary;
             background: $surface;
-            padding: 1;
+            padding: 1 2;
         }
         .setting-row {
-            height: 1;
+            height: 3;
             margin: 1 0;
         }
         .setting-label {
-            width: 22;
-        }
-        #settings-sources {
-            height: 6;
-            border: solid $border;
-            background: $surface-darken-1;
+            width: 16;
             padding: 0 1;
+        }
+        Select {
+            width: 38;
+            margin: 0 1;
         }
     """
 
@@ -105,10 +104,12 @@ class SettingsScreen(ModalScreen):
 
     def compose(self) -> ComposeResult:
         import rtmidi
-        ports = ["Reaper (OSC)", "Internal"]
+        sources = ["Reaper (OSC)", "Internal"]
         try:
             mi = rtmidi.MidiIn()
-            ports += [p for p in mi.get_ports() if p not in ports]
+            for p in mi.get_ports():
+                if p not in sources:
+                    sources.append(p)
             mi.delete()
         except Exception:
             pass
@@ -116,53 +117,48 @@ class SettingsScreen(ModalScreen):
         clock = self._config.get("midi", {}).get("clock", {})
         preferred = clock.get("preferred", "Reaper (OSC)")
         fallback = clock.get("fallback", "Internal")
+        bpm = clock.get("internal_bpm", 120)
         idle = self._config.get("ui", {}).get("idle_timeout_ms", 30000)
 
+        pref_options = [(s, s) for s in sources]
+        fallback_options = [(s, s) for s in sources]
+
         with Container(id="settings-dialog"):
-            yield Static("Settings — nova-script")
+            yield Static("⚙ Settings — nova-script")
             yield Static("")
-
             with Horizontal(classes="setting-row"):
-                yield Static("BPM Preferred:", classes="setting-label")
-                yield ListView(
-                    *[ListItem(Label(p)) for p in ports],
-                    id="preferred-list",
-                    classes="source-list",
+                yield Static("Preferred source:", classes="setting-label")
+                yield Select(
+                    pref_options,
+                    prompt=preferred,
+                    value=preferred,
+                    id="preferred-select",
                 )
             with Horizontal(classes="setting-row"):
-                yield Static("BPM Fallback:", classes="setting-label")
-                yield ListView(
-                    *[ListItem(Label(p)) for p in ports],
-                    id="fallback-list",
-                    classes="source-list",
+                yield Static("Fallback source:", classes="setting-label")
+                yield Select(
+                    fallback_options,
+                    prompt=fallback,
+                    value=fallback,
+                    id="fallback-select",
                 )
-            yield Static(f"  Internal BPM: {clock.get('internal_bpm', 120)}")
-            yield Static(f"  Idle timeout: {idle // 1000}s")
-            yield Static("")
-
-            yield Static(id="settings-sources")
+            yield Static(f"  Internal BPM: {bpm}   |   Idle timeout: {idle // 1000}s")
+            yield Static(f"  Current profile: {self._profile_name}")
             yield Static("")
             with Horizontal():
                 yield Button("Save & Close", variant="primary", id="save-settings")
-                yield Button("Close", id="close-settings")
-
-    def on_mount(self):
-        import rtmidi
-        sources = ["Reaper (OSC)", "Internal"]
-        try:
-            mi = rtmidi.MidiIn()
-            sources += [p for p in mi.get_ports() if p not in sources]
-            mi.delete()
-        except Exception:
-            pass
-        self.query_one("#settings-sources", Static).update(
-            f"Available MIDI clock sources:\n  " + "\n  ".join(sources)
-        )
+                yield Button("Cancel", id="close-settings")
 
     def on_button_pressed(self, event: Button.Pressed):
         if event.button.id == "close-settings":
             self.dismiss()
         elif event.button.id == "save-settings":
+            preferred = self.query_one("#preferred-select", Select).value
+            fallback = self.query_one("#fallback-select", Select).value
+            if preferred:
+                self._config.setdefault("midi", {}).setdefault("clock", {})["preferred"] = str(preferred)
+            if fallback:
+                self._config.setdefault("midi", {}).setdefault("clock", {})["fallback"] = str(fallback)
             self.dismiss(self._config)
 
 
@@ -333,7 +329,17 @@ class NovaTUI(App):
         self.push_screen(ProfileScreen(self._pm), handle)
 
     def action_settings(self):
-        self.push_screen(SettingsScreen(self._config, "live-show"))
+        def handle(result):
+            if result:
+                try:
+                    from src.profiles import ProfileManager
+                    pm = ProfileManager()
+                    pm.save("live-show", result)
+                    self._add_log("Settings saved to profile")
+                except Exception as e:
+                    self._add_log(f"Save failed: {e}")
+
+        self.push_screen(SettingsScreen(self._config, "live-show"), handle)
 
     def _add_log(self, text: str):
         from datetime import datetime
