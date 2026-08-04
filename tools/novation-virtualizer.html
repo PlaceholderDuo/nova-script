@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Novation Virtualizer</title>
+<title>Nova-script Virtualizer</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -15,36 +15,66 @@ body {
   flex-direction: column;
   align-items: center;
   min-height: 100vh;
-  padding: 14px;
+  padding: 0;
   -webkit-user-select: none; user-select: none;
 }
 
-.top-bar {
-  display: flex; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; justify-content: center;
+/* ── Header bar ── */
+header {
+  width: 100%; background: #1e1e1e; border-bottom: 1px solid #2a2a2a;
+  padding: 10px 24px; display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
 }
-.top-bar h1 { font-size: 16px; color: #e94560; font-weight: 600; white-space: nowrap; }
-.top-bar select {
-  padding: 3px 6px; background: #2a2a2a; border: 1px solid #444;
-  color: #ccc; border-radius: 3px; font-size: 12px;
+.header-left {
+  display: flex; align-items: baseline; gap: 10px;
 }
-.top-bar button {
-  padding: 3px 10px; border: none; border-radius: 3px;
-  cursor: pointer; font-size: 11px; font-weight: 600;
+.header-left h1 {
+  font-size: 14px; font-weight: 500; color: #ddd; letter-spacing: -0.2px;
 }
-.btn-connect { background: #0d8; color: #000; }
-.btn-disconnect { background: #b33; color: #fff; }
-.btn-clear { background: #444; color: #aaa; }
-.top-bar button:hover { filter: brightness(1.2); }
-.top-bar button:disabled { opacity: 0.4; cursor: default; }
-.top-bar .sep { color: #444; font-size: 14px; }
+.header-left .tag {
+  font-size: 9px; color: #555; text-transform: uppercase; letter-spacing: 1.5px;
+  border: 1px solid #2a2a2a; border-radius: 3px; padding: 1px 6px;
+}
 
-.status-row {
-  display: flex; gap: 16px; font-size: 10px; margin-bottom: 8px; color: #666;
+.header-center {
+  display: flex; align-items: center; gap: 6px;
 }
-.status-row .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 3px; vertical-align: middle; }
+.header-center select {
+  padding: 3px 6px; background: #252525; border: 1px solid #333;
+  color: #bbb; border-radius: 3px; font-size: 11px; outline: none;
+}
+.header-center select:focus { border-color: #555; }
+
+.header-right {
+  display: flex; align-items: center; gap: 5px;
+}
+.header-right button {
+  padding: 3px 10px; border: 1px solid transparent; border-radius: 3px;
+  cursor: pointer; font-size: 10px; font-weight: 500;
+  letter-spacing: 0.2px; transition: background 0.15s, border-color 0.15s;
+}
+.btn-connect { background: #0a2; color: #fff; border-color: #0a2; }
+.btn-connect:hover { background: #0c8; }
+.btn-disconnect { background: transparent; color: #b33; border-color: #3a2222; }
+.btn-disconnect:hover { background: #2a1515; }
+.btn-clear { background: transparent; color: #777; border-color: #333; }
+.btn-clear:hover { background: #2a2a2a; color: #aaa; }
+.header-right button:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
+
+/* ── Status strip ── */
+.status-strip {
+  width: 100%; background: #1a1a1a; border-bottom: 1px solid #222;
+  padding: 5px 24px; display: flex; gap: 18px; font-size: 10px; color: #555;
+}
+.status-strip .dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
 .dot-red { background: #e33; }
-.dot-green { background: #0d8; }
+.dot-green { background: #0a2; }
 .dot-amber { background: #e90; }
+
+main {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  padding: 20px 16px 24px;
+}
 
 .device-shell {
   position: relative;
@@ -162,45 +192,50 @@ body {
 #error-banner code { background: #611; padding: 1px 4px; border-radius: 2px; color: #f88; }
 
 .help-text {
-  margin-top: 10px; font-size: 9px; color: #444; text-align: center; max-width: 500px; line-height: 1.5;
+  margin-top: 8px; font-size: 10px; color: #444; text-align: center; max-width: 500px;
 }
-.help-text code { background: #2a2a2a; padding: 1px 4px; border-radius: 2px; color: #666; }
+.help-text code { background: #252525; padding: 1px 5px; border-radius: 3px; color: #666; font-size: 10px; }
+.help-text b { color: #666; font-weight: 500; }
 </style>
 </head>
 <body>
 
-<div class="top-bar">
-  <h1>Novation Virtualizer</h1>
-  <select id="device-select">
-    <optgroup label="Launchpad">
-      <option value="Launchpad Mini MK1" selected>Launchpad Mini MK1</option>
-      <option value="Launchpad MK1">Launchpad MK1</option>
-      <option value="Launchpad Mini MK3">Launchpad Mini MK3</option>
-      <option value="Launchpad Pro MK3">Launchpad Pro MK3</option>
-    </optgroup>
-    <optgroup label="Launchkey">
-      <option value="Launchkey 49 MK2">Launchkey 49 MK2</option>
-    </optgroup>
-  </select>
-  <button class="btn-connect" id="btn-connect">Connect MIDI</button>
-  <button class="btn-disconnect" id="btn-disconnect">Disconnect</button>
-  <button class="btn-clear" id="btn-clear">Clear</button>
+<header>
+  <div class="header-left">
+    <h1>Nova-script Virtualizer</h1>
+    <span class="tag">dev</span>
+  </div>
+  <div class="header-center">
+    <select id="device-select">
+      <optgroup label="Launchpad">
+        <option value="Launchpad Mini MK1" selected>Launchpad Mini MK1</option>
+        <option value="Launchpad MK1">Launchpad MK1</option>
+        <option value="Launchpad Mini MK3">Launchpad Mini MK3</option>
+        <option value="Launchpad Pro MK3">Launchpad Pro MK3</option>
+      </optgroup>
+      <optgroup label="Launchkey">
+        <option value="Launchkey 49 MK2">Launchkey 49 MK2</option>
+      </optgroup>
+    </select>
+  </div>
+  <div class="header-right">
+    <button class="btn-connect" id="btn-connect">Connect</button>
+    <button class="btn-disconnect" id="btn-disconnect">Disconnect</button>
+    <button class="btn-clear" id="btn-clear">Clear</button>
+  </div>
+</header>
+
+<div class="status-strip">
+   <span><span class="dot dot-red" id="ws-dot"></span> <span id="ws-status">backend offline</span></span>
+  <span><span class="dot dot-red" id="midi-dot"></span> <span id="midi-status">waiting</span></span>
+  <span id="device-name">—</span>
 </div>
 
-<div class="status-row">
-  <span><span class="dot dot-red" id="ws-dot"></span> WS: <span id="ws-status">disconnected</span></span>
-  <span><span class="dot dot-red" id="midi-dot"></span> MIDI: <span id="midi-status">not connected</span></span>
-  <span style="color:#444">Device: <span id="device-name">—</span></span>
-</div>
-
-<div id="error-banner"></div>
-
-<div id="device-area"><div class="device-shell"><div class="brand-area"><span class="brand">Launchpad Mini</span><span class="model">MK1</span></div></div></div>
-
-<div class="help-text" id="help">
-  Start the server: <code>./tools/run-virtualizer.sh</code><br>
-  Click Connect MIDI, then launch nova-script — it auto-discovers the virtual port.
-</div>
+<main>
+  <div id="error-banner"></div>
+  <div id="device-area"><div class="device-shell"><div class="brand-area"><span class="brand">Launchpad Mini</span><span class="model">MK1</span></div></div></div>
+  <div class="help-text" id="help"></div>
+</main>
 
 <script>
 let state = null, ws = null, reconnectTimer = null;
@@ -211,7 +246,7 @@ function send(data) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(data));
   } else {
-    showError('Server not connected. Start the virtualizer backend first.');
+    showError('Backend not running. Start it with: ./tools/run-virtualizer.sh');
   }
 }
 
@@ -226,15 +261,13 @@ function updateStatus() {
   if (state) {
     const midi = state.connected;
     $('midi-dot').className = midi ? 'dot dot-green' : 'dot dot-red';
-    $('midi-status').textContent = midi ? 'connected' : 'not connected';
+    $('midi-status').textContent = midi ? 'midi ready' : 'midi offline';
     $('device-name').textContent = state.type || '—';
     $('btn-connect').disabled = midi;
     $('btn-disconnect').disabled = !midi;
     $('help').innerHTML = midi
-      ? `MIDI port <code>${state.type}</code> is active. Click pads to send events.<br>
-         Run <code>python -m src.main</code> in nova-script to connect.`
-      : `Start the server: <code>./tools/run-virtualizer.sh</code><br>
-         Click <b>Connect MIDI</b> to create virtual ports visible to nova-script.`;
+      ? `Virtual MIDI ready &middot; run <code>nova-script live-show</code> to connect`
+      : `Run <code>./tools/run-virtualizer.sh</code> to start backend`;
   }
 }
 
@@ -245,6 +278,8 @@ function connect() {
     ws = new WebSocket(WS_URL);
   } catch (e) {
     $('ws-status').textContent = 'failed';
+    $('error-banner').textContent = 'Cannot reach backend. Run: ./tools/run-virtualizer.sh';
+    $('error-banner').style.display = 'block';
     return;
   }
 
@@ -252,6 +287,7 @@ function connect() {
     $('ws-status').textContent = 'connected';
     $('ws-dot').className = 'dot dot-green';
     if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
+    $('error-banner').style.display = 'none';
     ws.send(JSON.stringify({action: 'get_state'}));
   };
 
@@ -262,8 +298,10 @@ function connect() {
   };
 
   ws.onclose = () => {
-    $('ws-status').textContent = 'disconnected';
+    $('ws-status').textContent = 'backend offline';
     $('ws-dot').className = 'dot dot-red';
+    $('error-banner').textContent = 'Backend stopped — reconnecting in 2s...';
+    $('error-banner').style.display = 'block';
     if (!reconnectTimer) reconnectTimer = setInterval(connect, 2000);
   };
 
