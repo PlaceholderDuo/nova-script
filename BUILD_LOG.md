@@ -673,10 +673,97 @@ Based on research, the cleanest approach for Reaper ↔ nova-script:
 
 ### Next Actions
 1. Test Launchpad input with automap kick workaround
-2. Build ReaperOSC config file bridge
-3. Implement OSC server/client in nova-script (`src/osc/`)
-4. Fix Launchkey 49 MK2 controller to use InControl port (Channel 16), Extended mode, correct pad notes
-5. Build Message Display Mode with character-to-grid font
+2. ~~Build ReaperOSC config file bridge~~ → Done in Entry #4
+3. ~~Implement OSC server/client in nova-script (`src/osc/`)~~ → Done in Entry #4
+4. ~~Fix Launchkey 49 MK2 controller~~ → Done in Entry #4
+5. ~~Build Message Display Mode~~ → Done in Entry #4
 6. Add MIDI clock sync options (internal/OSC/MIDI)
+
+---
+
+## Entry #4 — 2026-08-03 — OSC Bridge, Launchkey Protocol Fix, Message Display Mode
+
+### Source
+Daniel via Claude Code. Continuation of build after research session.
+
+### Changes Made
+
+- **MidiManager multi-port support** (`src/midi/manager.py`): Extended to handle devices with multiple MIDI port pairs (e.g., Launchkey's MIDI + InControl ports).
+  - `DeviceConnection` now has `extra_inputs` and `extra_outputs` dicts for secondary ports
+  - `register_device()` accepts `extra_input_patterns` and `extra_output_patterns` (dict of label → name-pattern)
+  - `send_message()` accepts `target` parameter to route to specific port (e.g., `target="incontrol"`)
+  - Connection lifecycle tracks both primary and secondary port readiness
+  - `_on_connect` callback fires only when ALL ports are connected
+  - Health check and auto-reconnect cover all ports
+
+- **Launchkey 49 MK2 rewrite** (`src/controllers/launchkey_mk2.py`): Complete rewrite using protocol from Entry #3 research.
+  - LED commands send to InControl port via `target="incontrol"`
+  - Extended mode auto-activated on connect: `9F 0C 7F`
+  - Pad notes switch to Extended mapping (112-119 + 96-103) in Extended mode
+  - LED palette: 28 colors via velocity lookup (`LK_COLOR_PALETTE`)
+  - `send_led_flash()` on Channel 2, `send_led_pulse()` on Channel 3
+  - Knobs: CC 21-28, Faders: CC 41-48 (+ Master on CC 7)
+  - Transport: CC 112-117 + track left/right on CC 102-103
+  - Mute/Solo button on CC 51
+  - `enter_incontrol_pads/pots/sliders()` methods for per-section InControl mode
+  - `reset_leds()` via `BF 00 00`
+
+- **OSC Bridge** (`src/osc/bridge.py`, `src/osc/namespace.py`):
+  - `OscBridge` class: manages bidirectional OSC communication with REAPER
+  - Server: `AsyncIOOSCUDPServer` listening on configurable port (default 9001)
+  - Client: `SimpleUDPClient` sending to REAPER (default port 8000)
+  - Dispatcher maps all incoming patterns from `INCOMING_ADDRESS` namespace
+  - Dedicated send methods: `send_track_volume()`, `send_fx_param()`, `send_transport_play()`, etc.
+  - Incoming message parsing into typed events: `display_message`, `mode_set`, `beat`, `play_state`, `track_vu`
+  - Callback-based: engine receives parsed messages via `_on_osc_message()`
+  - Graceful degradation if port is taken or REAPER isn't listening
+  - Tested: receives `/nova/display/message` and `/nova/mode/set` via UDP
+
+- **Message Display Mode** (`src/ui/modes/message.py`):
+  - 5×5 pixel font for 47 characters (A-Z, 0-9, space, .,!?-/:'+#)
+  - `FONT_5X5` character dictionary
+  - Scrolling text across 8×8 grid at configurable speed (default 150ms/step)
+  - `enqueue_message()`: queue system, messages display sequentially
+  - `_render()`: renders current text with scroll offset, respecting grid boundaries
+  - Auto-activation: triggers after `idle_timeout_ms` of no user input when messages queued
+  - Auto-dismiss: any button press returns to previous mode
+  - Tested: "HELLO WORLD" scrolls across Launchpad LEDs after OSC trigger
+
+- **Engine updates** (`src/engine.py`):
+  - Registers Launchkey with `extra_input_patterns` and `extra_output_patterns` for InControl
+  - Creates and starts `OscBridge` during startup
+  - Registers Message mode
+  - `_on_osc_message()` routes display messages, mode changes, beat/VU events
+  - `_enqueue_display_message()` queues messages for display
+  - `_check_idle_message()` auto-activates message mode when idle + messages queued
+  - `_dismiss_message()` returns to previous mode on user input
+  - Button events during message mode dismiss the message
+  - Event loop handles new 4-tuple MIDI format (device, message, timestamp, port_key)
+  - OSC port defaults: listen=9001, reaper=8000 (avoiding port 9000 conflict)
+
+- **Config updated** (`config/default.yaml`): OSC listen port changed to 9001
+
+### Files Changed
+- `src/midi/manager.py` — Added multi-port support with extra_inputs/extra_outputs
+- `src/controllers/launchkey_mk2.py` — Complete rewrite with InControl, Extended mode, palette LEDs
+- `src/osc/__init__.py` — Exists (empty)
+- `src/osc/namespace.py` — New: OSC address space definitions
+- `src/osc/bridge.py` — New: bidirectional OSC bridge to REAPER
+- `src/ui/modes/message.py` — New: scrolling text display mode with 5×5 font
+- `src/engine.py` — Updated: OSC bridge, Launchkey reg, message mode, idle dispatch
+- `config/default.yaml` — Updated OSC ports
+
+### Known Issues
+- OSC server port 9001 confirmed working. Port 9000 was taken (likely by REAPER or Live Show Manager).
+- Launchkey 49 MK2 not currently plugged in — controller code ready, will activate when connected.
+- `SimpleUDPClient` is blocking (runs in main asyncio loop). Fine for now since sends are fast. Can upgrade to async UDP client if needed.
+
+### Next Actions
+1. Test Launchpad input with automap kick workaround (press some buttons!)
+2. Build ReaperOSC config file for nova-script namespace
+3. Add MIDI clock sync from external sources
+4. Build Performance/Clip Launch mode (Ableton-style session view)
+5. Add velocity sensitivity support for Launchkey pads
+6. Test full Reaper ↔ nova-script OSC round-trip with actual Reaper
 
 

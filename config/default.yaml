@@ -10,7 +10,7 @@ devices:
 
 # OSC settings
 osc:
-  listen_port: 9000
+  listen_port: 9001
   listen_host: "127.0.0.1"
   reaper_port: 8000
   reaper_host: "127.0.0.1"

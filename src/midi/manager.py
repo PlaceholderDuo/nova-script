@@ -25,6 +25,10 @@ class DeviceConnection:
     connected: bool = False
     last_seen: float = 0.0
 
+    extra_inputs: dict[str, tuple[Optional[MidiPort], Optional[rtmidi.MidiIn]]] = field(default_factory=dict)
+    extra_outputs: dict[str, tuple[Optional[MidiPort], Optional[rtmidi.MidiOut]]] = field(default_factory=dict)
+    secondary_connected: bool = False
+
 
 class MidiManager:
     def __init__(self, poll_interval: float = 0.5):
@@ -37,6 +41,7 @@ class MidiManager:
 
         self.devices: dict[str, DeviceConnection] = {}
         self._input_callbacks: dict[str, Callable] = {}
+        self._device_configs: dict[str, dict] = {}
 
         self._on_connect: Optional[Callable] = None
         self._on_disconnect: Optional[Callable] = None
@@ -58,67 +63,134 @@ class MidiManager:
             self._midi_out.get_ports(),
         )
 
-    def register_device(self, name: str, input_callback: Callable):
+    def register_device(
+        self,
+        name: str,
+        input_callback: Callable,
+        extra_input_patterns: Optional[dict[str, str]] = None,
+        extra_output_patterns: Optional[dict[str, str]] = None,
+    ):
         self.devices[name] = DeviceConnection(name=name)
         self._input_callbacks[name] = input_callback
+        self._device_configs[name] = {
+            "extra_inputs": extra_input_patterns or {},
+            "extra_outputs": extra_output_patterns or {},
+        }
         logger.info(f"Registered device: {name}")
+        if extra_input_patterns:
+            for key, pattern in extra_input_patterns.items():
+                logger.info(f"  + extra input '{key}': pattern='{pattern}'")
 
-    def _find_matching_port(self, ports: list[str], device_name: str) -> Optional[MidiPort]:
+    def _find_matching_port(self, ports: list[str], pattern: str) -> Optional[MidiPort]:
         for idx, port_name in enumerate(ports):
-            if device_name.lower() in port_name.lower():
+            if pattern.lower() in port_name.lower():
                 return MidiPort(name=port_name, index=idx)
         return None
 
     def _try_connect_device(self, device_name: str) -> bool:
         conn = self.devices.get(device_name)
+        config = self._device_configs.get(device_name, {})
         if conn is None:
             return False
 
         if conn.connected:
-            return True
+            if not config.get("extra_inputs") and not config.get("extra_outputs"):
+                return True
+            if conn.secondary_connected:
+                return True
 
         in_ports, out_ports = self.scan_ports()
 
-        input_port = self._find_matching_port(in_ports, device_name)
-        output_port = self._find_matching_port(out_ports, device_name)
+        if not conn.connected:
+            input_port = self._find_matching_port(in_ports, device_name)
+            output_port = self._find_matching_port(out_ports, device_name)
 
-        if input_port is None or output_port is None:
-            return False
+            if input_port is None or output_port is None:
+                return False
 
-        try:
-            midi_in = rtmidi.MidiIn()
-            midi_in.open_port(input_port.index)
-            midi_in.ignore_types(sysex=False, timing=False, active_sense=False)
-            midi_in.set_callback(self._make_callback(device_name))
+            try:
+                midi_in = rtmidi.MidiIn()
+                midi_in.open_port(input_port.index)
+                midi_in.ignore_types(sysex=False, timing=False, active_sense=False)
+                midi_in.set_callback(self._make_callback(device_name, "main"))
 
-            midi_out = rtmidi.MidiOut()
-            midi_out.open_port(output_port.index)
+                midi_out = rtmidi.MidiOut()
+                midi_out.open_port(output_port.index)
 
-            conn.input_port = input_port
-            conn.output_port = output_port
-            conn.midi_in = midi_in
-            conn.midi_out = midi_out
-            conn.connected = True
-            conn.last_seen = time.monotonic()
+                conn.input_port = input_port
+                conn.output_port = output_port
+                conn.midi_in = midi_in
+                conn.midi_out = midi_out
+                conn.connected = True
+                conn.last_seen = time.monotonic()
 
-            logger.info(
-                f"Connected {device_name}: "
-                f"in={input_port.name} ({input_port.index}), "
-                f"out={output_port.name} ({output_port.index})"
-            )
+                logger.info(
+                    f"Connected {device_name}: "
+                    f"in={input_port.name} ({input_port.index}), "
+                    f"out={output_port.name} ({output_port.index})"
+                )
+            except Exception as e:
+                logger.error(f"Failed to connect {device_name}: {e}")
+                return False
 
-            if self._on_connect:
+        extra_inputs = config.get("extra_inputs", {})
+        extra_outputs = config.get("extra_outputs", {})
+
+        for key, pattern in extra_inputs.items():
+            if key not in conn.extra_inputs or conn.extra_inputs[key][0] is None:
+                port = self._find_matching_port(in_ports, pattern)
+                if port is None:
+                    continue
+                try:
+                    mi = rtmidi.MidiIn()
+                    mi.open_port(port.index)
+                    mi.ignore_types(sysex=False, timing=False, active_sense=False)
+                    mi.set_callback(self._make_callback(device_name, key))
+                    conn.extra_inputs[key] = (port, mi)
+                    logger.info(f"  + {device_name} extra in '{key}': {port.name} ({port.index})")
+                except Exception as e:
+                    logger.error(f"Failed extra in {key} for {device_name}: {e}")
+
+        for key, pattern in extra_outputs.items():
+            if key not in conn.extra_outputs or conn.extra_outputs[key][0] is None:
+                port = self._find_matching_port(out_ports, pattern)
+                if port is None:
+                    continue
+                try:
+                    mo = rtmidi.MidiOut()
+                    mo.open_port(port.index)
+                    conn.extra_outputs[key] = (port, mo)
+                    logger.info(f"  + {device_name} extra out '{key}': {port.name} ({port.index})")
+                except Exception as e:
+                    logger.error(f"Failed extra out {key} for {device_name}: {e}")
+
+        has_extras = bool(extra_inputs) or bool(extra_outputs)
+        if not has_extras:
+            conn.secondary_connected = True
+        else:
+            all_extra_in = all(
+                key in conn.extra_inputs and conn.extra_inputs[key][0] is not None
+                for key in extra_inputs
+            ) if extra_inputs else True
+            all_extra_out = all(
+                key in conn.extra_outputs and conn.extra_outputs[key][0] is not None
+                for key in extra_outputs
+            ) if extra_outputs else True
+            conn.secondary_connected = all_extra_in and all_extra_out
+            if conn.secondary_connected and not conn._reported_secondary:
+                conn._reported_secondary = True
+                logger.info(f"{device_name}: all extra ports connected")
+
+        if conn.connected and (not has_extras or conn.secondary_connected):
+            if self._on_connect and not getattr(conn, "_on_connect_fired", False):
+                conn._on_connect_fired = True
                 self._on_connect(device_name)
 
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to connect {device_name}: {e}")
-            return False
+        return conn.connected
 
     def _disconnect_device(self, device_name: str):
         conn = self.devices.get(device_name)
-        if conn is None or not conn.connected:
+        if conn is None:
             return
 
         try:
@@ -127,14 +199,26 @@ class MidiManager:
                 conn.midi_in.close_port()
             if conn.midi_out:
                 conn.midi_out.close_port()
+            for key, (_, mi) in list(conn.extra_inputs.items()):
+                if mi:
+                    mi.cancel_callback()
+                    mi.close_port()
+            for key, (_, mo) in list(conn.extra_outputs.items()):
+                if mo:
+                    mo.close_port()
         except Exception as e:
             logger.warning(f"Error closing ports for {device_name}: {e}")
 
         conn.connected = False
+        conn.secondary_connected = False
+        conn._on_connect_fired = False
+        conn._reported_secondary = False
         conn.midi_in = None
         conn.midi_out = None
         conn.input_port = None
         conn.output_port = None
+        conn.extra_inputs.clear()
+        conn.extra_outputs.clear()
 
         logger.warning(f"Disconnected: {device_name}")
 
@@ -148,25 +232,26 @@ class MidiManager:
             if not conn.connected:
                 continue
 
-            in_still_present = any(
+            in_still = any(
                 conn.input_port.name == p for p in in_ports
-            )
-            out_still_present = any(
+            ) if conn.input_port else False
+            out_still = any(
                 conn.output_port.name == p for p in out_ports
-            )
+            ) if conn.output_port else False
 
-            if not in_still_present or not out_still_present:
+            if not in_still or not out_still:
                 logger.warning(
                     f"Device {device_name} disappeared "
-                    f"(in={in_still_present}, out={out_still_present}). "
-                    f"Disconnecting and will attempt reconnect."
+                    f"(in={in_still}, out={out_still}). Reconnecting..."
                 )
                 self._disconnect_device(device_name)
 
-    def _make_callback(self, device_name: str):
+    def _make_callback(self, device_name: str, port_key: str = "main"):
         def callback(event, data=None):
             message, delta_time = event
-            self._midi_event_queue.put_nowait((device_name, message, time.monotonic()))
+            self._midi_event_queue.put_nowait(
+                (device_name, message, time.monotonic(), port_key)
+            )
         return callback
 
     async def _poll_loop(self):
@@ -189,17 +274,29 @@ class MidiManager:
 
             await asyncio.sleep(self.poll_interval)
 
-    def send_message(self, device_name: str, message: list[int]):
+    def send_message(self, device_name: str, message: list[int], target: str = "main"):
         conn = self.devices.get(device_name)
-        if conn is None or not conn.connected or conn.midi_out is None:
-            logger.debug(f"Cannot send to {device_name}: not connected")
+        if conn is None:
+            logger.debug(f"Cannot send to {device_name}: unknown device")
             return
 
-        try:
-            conn.midi_out.send_message(message)
-        except Exception as e:
-            logger.error(f"Error sending MIDI to {device_name}: {e}")
-            self._disconnect_device(device_name)
+        if target == "main":
+            if not conn.connected or conn.midi_out is None:
+                logger.debug(f"Cannot send to {device_name}: not connected")
+                return
+            try:
+                conn.midi_out.send_message(message)
+            except Exception as e:
+                logger.error(f"Error sending MIDI to {device_name}: {e}")
+                self._disconnect_device(device_name)
+        else:
+            if target not in conn.extra_outputs or conn.extra_outputs[target][1] is None:
+                logger.debug(f"Cannot send to {device_name}/{target}: not connected")
+                return
+            try:
+                conn.extra_outputs[target][1].send_message(message)
+            except Exception as e:
+                logger.error(f"Error sending MIDI to {device_name}/{target}: {e}")
 
     async def start(self):
         if self._running:

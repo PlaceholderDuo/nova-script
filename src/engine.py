@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from queue import Queue, Empty
+from queue import Queue
 from typing import Optional
 
 import yaml
@@ -15,6 +15,8 @@ from src.ui.mode_manager import ModeManager
 from src.ui.modes.menu import MenuMode
 from src.ui.modes.sequencer import SequencerMode
 from src.ui.modes.mixer import MixerMode
+from src.ui.modes.message import MessageMode
+from src.osc.bridge import OscBridge
 from src.controllers.color_map import LogicalColor
 
 logger = logging.getLogger(__name__)
@@ -26,11 +28,14 @@ class Engine:
         self.midi_manager = MidiManager(poll_interval=0.5)
         self.grid = LogicalGrid(8, 8)
         self.mode_manager: Optional[ModeManager] = None
-        self.controllers: dict[str, "NovationController"] = {}
+        self.controllers: dict[str, object] = {}
+        self.osc: Optional[OscBridge] = None
         self._running = False
         self._last_tick = time.monotonic()
         self._idle_since = time.monotonic()
         self._tui_queue: Optional[Queue] = None
+        self._idle_timeout_ms: int = 2000
+        self._message_mode: Optional[MessageMode] = None
 
     def set_tui_queue(self, queue):
         self._tui_queue = queue
@@ -52,6 +57,19 @@ class Engine:
 
         self._setup_controllers()
         await self.midi_manager.start()
+
+        osc_config = self.config.get("osc", {})
+        self.osc = OscBridge(
+            listen_host=osc_config.get("listen_host", "127.0.0.1"),
+            listen_port=osc_config.get("listen_port", 9001),
+            reaper_host=osc_config.get("reaper_host", "127.0.0.1"),
+            reaper_port=osc_config.get("reaper_port", 8000),
+        )
+        self.osc.set_on_message(self._on_osc_message)
+        await self.osc.start()
+
+        self._idle_timeout_ms = self.config.get("ui", {}).get("idle_timeout_ms", 2000)
+
         self._setup_modes()
 
         self._running = True
@@ -69,6 +87,9 @@ class Engine:
         for ctrl in self.controllers.values():
             ctrl.clear_grid()
 
+        if self.osc:
+            await self.osc.stop()
+
         await self.midi_manager.stop()
 
     def _setup_controllers(self):
@@ -79,6 +100,19 @@ class Engine:
         )
         self.controllers["Launchpad Mini"] = launchpad
         self.midi_manager.register_device("Launchpad Mini", launchpad.handle_raw_midi)
+
+        launchkey = Launchkey49MK2(self.midi_manager)
+        launchkey.set_callbacks(
+            on_grid_event=self._on_grid_event,
+            on_control_event=self._on_control_event,
+        )
+        self.controllers["Launchkey 49"] = launchkey
+        self.midi_manager.register_device(
+            "Launchkey 49",
+            launchkey.handle_raw_midi,
+            extra_input_patterns={"incontrol": "InControl"},
+            extra_output_patterns={"incontrol": "InControl"},
+        )
 
         self.midi_manager.set_on_connect(self._on_device_connect)
         self.midi_manager.set_on_disconnect(self._on_device_disconnect)
@@ -118,6 +152,12 @@ class Engine:
         )
         self.mode_manager.register(mixer)
 
+        self._message_mode = MessageMode(
+            self.grid,
+            self.controllers["Launchpad Mini"],
+        )
+        self.mode_manager.register(self._message_mode)
+
         default_mode = self.config.get("ui", {}).get("default_mode", "menu")
         self.mode_manager.switch_to(default_mode)
 
@@ -135,11 +175,17 @@ class Engine:
 
     def _on_grid_event(self, event):
         self._idle_since = time.monotonic()
+        if self.mode_manager.active_mode_name == "message":
+            self._dismiss_message()
+            return
         if self.mode_manager:
             self.mode_manager.handle_grid_event(event)
 
     def _on_control_event(self, event):
         self._idle_since = time.monotonic()
+        if self.mode_manager.active_mode_name == "message":
+            self._dismiss_message()
+            return
         if self.mode_manager:
             self.mode_manager.handle_control_event(event)
 
@@ -149,6 +195,35 @@ class Engine:
             logger.warning(f"Mode '{mode_name}' not yet implemented, staying in menu")
             return
         self.mode_manager.switch_to(mode_name)
+
+    def _on_osc_message(self, msg: dict):
+        msg_type = msg.get("type")
+        logger.debug(f"OSC received: {msg_type}")
+
+        if msg_type == "display_message":
+            text = msg.get("text", "")
+            self._enqueue_display_message(text)
+        elif msg_type == "mode_set":
+            mode_name = msg.get("mode", "")
+            if mode_name in self.mode_manager._modes:
+                self.mode_manager.switch_to(mode_name)
+        elif msg_type == "beat":
+            pass
+        elif msg_type == "track_vu":
+            pass
+        elif msg_type == "play_state":
+            pass
+
+    def _enqueue_display_message(self, text: str):
+        if not text:
+            return
+        logger.info(f"Display message: {text}")
+        if self._message_mode:
+            self._message_mode.enqueue_message(text)
+
+    def _dismiss_message(self):
+        logger.info("Message dismissed by user input")
+        self.mode_manager.switch_back()
 
     async def _tui_broadcast_loop(self):
         while self._running:
@@ -174,21 +249,38 @@ class Engine:
         while self._running:
             try:
                 try:
-                    device_name, message, timestamp = await asyncio.wait_for(
+                    event_data = await asyncio.wait_for(
                         queue.get(), timeout=0.1
                     )
                 except asyncio.TimeoutError:
                     self._tick()
+                    self._check_idle_message()
                     continue
+
+                device_name, message, timestamp = event_data[0], event_data[1], event_data[2]
 
                 controller = self.controllers.get(device_name)
                 if controller:
                     controller.handle_raw_midi(message)
 
                 self._tick()
+                self._check_idle_message()
 
             except Exception as e:
                 logger.error(f"Event loop error: {e}", exc_info=True)
+
+    def _check_idle_message(self):
+        if self.mode_manager.active_mode_name == "message":
+            return
+
+        idle_ms = (time.monotonic() - self._idle_since) * 1000
+        if idle_ms < self._idle_timeout_ms:
+            return
+
+        if self._message_mode and self._message_mode._current_text:
+            logger.debug(f"Auto-activating message display (idle for {idle_ms:.0f}ms)")
+            self._message_mode.set_previous_mode(self.mode_manager.active_mode_name)
+            self.mode_manager.switch_to("message")
 
     def _tick(self):
         now = time.monotonic()
