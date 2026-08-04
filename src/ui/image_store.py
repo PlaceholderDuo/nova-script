@@ -90,6 +90,19 @@ DEFAULT_IMAGES: dict[int, dict] = {
         "name": "all_green",
         "grid": [["GREEN_LOW"] * 8] * 8,
     },
+    8: {
+        "name": "peace",
+        "grid": [
+            ["OFF", "OFF", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "OFF", "OFF"],
+            ["OFF", "AMBER_HIGH", "OFF", "OFF", "OFF", "OFF", "AMBER_HIGH", "OFF"],
+            ["AMBER_HIGH", "OFF", "AMBER_HIGH", "OFF", "OFF", "AMBER_HIGH", "OFF", "AMBER_HIGH"],
+            ["AMBER_HIGH", "OFF", "OFF", "AMBER_HIGH", "AMBER_HIGH", "OFF", "OFF", "AMBER_HIGH"],
+            ["AMBER_HIGH", "OFF", "OFF", "AMBER_HIGH", "AMBER_HIGH", "OFF", "OFF", "AMBER_HIGH"],
+            ["AMBER_HIGH", "OFF", "AMBER_HIGH", "OFF", "OFF", "AMBER_HIGH", "OFF", "AMBER_HIGH"],
+            ["OFF", "AMBER_HIGH", "OFF", "OFF", "OFF", "OFF", "AMBER_HIGH", "OFF"],
+            ["OFF", "OFF", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "OFF", "OFF"],
+        ],
+    },
 }
 
 

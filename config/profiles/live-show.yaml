@@ -61,8 +61,10 @@ mixer:
     - {index: 15, alias: "Force Pad 4", output: "MIDI", curve: "linear", midi_channel: 0, midi_cc: 28}
 
 screensaver:
-  cycle_enabled: false
+  cycle_enabled: true
   firework_bars: 8
+  idle_timeout_ms: 10000
+  brightness: 100
 
 tui:
   enabled: true

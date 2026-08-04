@@ -62,6 +62,7 @@ class OverlayManager:
         self._screensaver_cycle_index: int = 0
         self._screensaver_last_cycle: float = 0.0
         self._screensaver_beat_interval: float = 60.0 / bpm
+        self._brightness_pct: int = 100
 
     @property
     def active(self) -> OverlayPriority:
@@ -239,7 +240,13 @@ class OverlayManager:
                     self._render_screensaver_image()
 
     def _render_screensaver_image(self):
-        self.image_store.render_to_grid(self._screensaver_image, self.grid)
+        img = self.image_store.get_image(self._screensaver_image)
+        if img is None:
+            return
+        for y, row in enumerate(img):
+            for x, color in enumerate(row):
+                dimmed = self.dim_color(color, self._brightness_pct)
+                self.grid.set_cell(x, y, dimmed)
         self._commit()
 
     # ── Private: helpers ──────────────────────────────
@@ -261,3 +268,33 @@ class OverlayManager:
     def set_bpm(self, bpm: float):
         self.bpm = bpm
         self._screensaver_beat_interval = 60.0 / max(1, bpm)
+
+    def set_screensaver_brightness(self, pct: int):
+        self._brightness_pct = max(0, min(100, pct))
+
+    @staticmethod
+    def dim_color(color: LogicalColor, pct: int) -> LogicalColor:
+        """Map a LogicalColor to appropriate brightness based on percentage.
+        MK1: 0-33%=LOW, 34-66%=MED, 67-100%=HIGH. OFF stays OFF."""
+        if color == LogicalColor.OFF:
+            return LogicalColor.OFF
+        name = color.name
+        if "_HIGH" in name:
+            if pct <= 33:
+                return LogicalColor[name.replace("_HIGH", "_LOW")]
+            elif pct <= 66:
+                return LogicalColor[name.replace("_HIGH", "_MED")]
+            return color
+        elif "_MED" in name:
+            if pct <= 33:
+                return LogicalColor[name.replace("_MED", "_LOW")]
+            elif pct <= 66:
+                return color
+            return LogicalColor[name.replace("_MED", "_HIGH")]
+        elif "_LOW" in name:
+            if pct <= 33:
+                return color
+            elif pct <= 66:
+                return LogicalColor[name.replace("_LOW", "_MED")]
+            return LogicalColor[name.replace("_LOW", "_HIGH")]
+        return color

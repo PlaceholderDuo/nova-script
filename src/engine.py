@@ -163,6 +163,7 @@ class Engine:
         sc_config = self.config.get("screensaver", {})
         if sc_config.get("cycle_enabled"):
             self.overlay.set_screensaver_cycle(True)
+        self.overlay.set_screensaver_brightness(sc_config.get("brightness", 100))
 
     def _setup_modes(self):
         self.mode_manager = ModeManager(self.grid, self.controllers["Launchpad Mini"])
