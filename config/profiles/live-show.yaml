@@ -17,7 +17,7 @@ osc:
 
 ui:
   default_mode: performance
-  idle_timeout_ms: 30000
+  idle_timeout_ms: 8000
   long_press_ms: 500
   message_scroll_speed_ms: 150
   downbeat_flash: "tempo_led"

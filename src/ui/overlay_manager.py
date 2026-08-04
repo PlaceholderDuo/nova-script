@@ -61,7 +61,7 @@ class OverlayManager:
         self._screensaver_cycle: bool = False
         self._screensaver_cycle_index: int = 0
         self._screensaver_last_cycle: float = 0.0
-        self._screensaver_beat_interval: float = 60.0 / bpm
+        self._screensaver_cycle_interval: float = 4.0
         self._brightness_pct: int = 100
 
     @property
@@ -230,9 +230,9 @@ class OverlayManager:
 
     def _tick_screensaver(self, now: float):
         if self._screensaver_cycle:
-            if now - self._screensaver_last_cycle >= self._screensaver_beat_interval:
+            if now - self._screensaver_last_cycle >= self._screensaver_cycle_interval:
                 self._screensaver_last_cycle = now
-                slot = self._screensaver_cycle_index % 8
+                slot = self._screensaver_cycle_index % 2
                 self._screensaver_cycle_index += 1
                 img_id = self.image_store.get_quick_slot(slot)
                 if img_id is not None:
@@ -267,7 +267,6 @@ class OverlayManager:
 
     def set_bpm(self, bpm: float):
         self.bpm = bpm
-        self._screensaver_beat_interval = 60.0 / max(1, bpm)
 
     def set_screensaver_brightness(self, pct: int):
         self._brightness_pct = max(0, min(100, pct))
