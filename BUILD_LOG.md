@@ -1678,3 +1678,70 @@ Each controller now shows accurate button labels matching the real hardware:
 - Separate `MK1_VELOCITY_TO_COLOR` and `LK_PALETTE_TO_COLOR` lookup tables
 - `color_to_rgb()` helper for reliable color→RGB mapping
 - Device profiles expanded: `top_labels`, `right_labels`, `left_labels`, `extra_buttons`, `transport_labels`, `device_brand`, `model_line` fields
+
+---
+
+## Entry #22 — 2026-08-04 — Startup Wave Fix, Screensaver Cycle Fix, Smiley Face, Virtualizer Auto-Connect + Integration Testing
+
+### Context
+Session focused on polish: fixing the invisible startup wave, broken screensaver cycling, replacing the peace sign image, and making the virtualizer fully plug-and-play with nova-script.
+
+### Changes Made
+
+**Startup Wave Fix** (`src/engine.py`, `src/ui/startup_wave.py`, `src/ui/modes/performance.py`)
+- Wave was finishing in ~0.6s — too fast to see on hardware. Increased to ~1.2s: 0.15s buffer before wave, 0.05s sleep per frame (was 0.03s), 0.2s pause after wave before mode render.
+- Post-wave "red block" resolved: disabled FX slots in Performance Mode now render as `OFF` instead of `RED_HIGH`. Previously all 40 disabled FX cells (8 tracks × 5 FX) showed blazing red on boot, masking the startup wave and looking broken. Now only the track mute row (row 7) is lit on initial render.
+- Wave commit optimized to use `dirty_cells()` instead of blasting all 64 pads per frame.
+
+**Screensaver Cycle Fix** (`src/ui/overlay_manager.py`)
+- Root cause: copy-paste bug in `_tick_screensaver()` — `_render_screensaver_image()` was called twice in a row. First call rendered and consumed dirty cells, second call had nothing to send. Hardware displayed first cycle (heart → peace) then froze on peace.
+- Fix: single render call per cycle. Changed cycle index to `(index + 1) % 2` for clean 0↔1 alternation.
+- Quick slots configured: slot 0 = image 1 (heart), slot 1 = image 8 (now smiley). Cycles every 4s.
+
+**Smiley Face** (`src/ui/image_store.py`, `config/screensaver-images.yaml`)
+- Replaced peace sign (image 8) with smiley face on 8×8 grid.
+- Layout: eyes (two amber dots) at row 1, nose bridge at row 2, face outline at row 3, smile at row 4. Six rows of padding.
+- Preserved Launchpad coordinate convention: image row 0 = top of pad (away from user), row 7 = bottom (closest).
+
+**Virtualizer Auto-Connect + Clean Shutdown** (`tools/novation-virtualizer.py`)
+- MIDI ports now auto-created on virtualizer startup — no need to click "Connect MIDI" in browser. `VirtualDevice.connect_midi()` called in `run()` before `serve_forever()`.
+- Clean shutdown: replaced fragile `signal.signal()` + `sys.exit(0)` with `asyncio.new_event_loop()` + `loop.add_signal_handler()`. Server properly closes WebSocket + MIDI ports on SIGTERM/SIGINT. Exit code 0.
+- macOS virtual port behavior documented: `MidiIn.open_virtual_port()` creates a CoreMIDI virtual SOURCE (appears as OUT port to other apps). `MidiOut.open_virtual_port()` creates a virtual DESTINATION (appears as IN port). Both share the same name "Launchpad Mini" — nova-script's substring matching handles this correctly.
+
+**End-to-End Integration Testing** (`tools/test_integration.py`)
+- Verified full bidirectional flow: virtualizer → virtual MIDI → nova-script → virtual MIDI → virtualizer → WebSocket → browser.
+- nova-script discovers virtual "Launchpad Mini" ports automatically via `_find_matching_port()`.
+- LED updates from nova-script (startup wave, performance mode render, page indicators) appear correctly in virtualizer state.
+- Button presses simulated in virtualizer → nova-script receives GridEvents via virtual MIDI callback.
+
+**MIDI Manager Poll Guard** (`src/midi/manager.py`)
+- Fixed `'NoneType' object has no attribute 'lower'` when virtual ports disappear during health check.
+- Added explicit `conn.input_port is None or conn.output_port is None` check before accessing `.name`.
+
+**Dependencies** (`pyproject.toml`)
+- Added `websockets>=14` as optional `[tools]` dependency group.
+- Install with: `pip install -e '.[tools]'`
+
+**Updated Scripts** (`tools/run-virtualizer.sh`)
+- Updated help text: removed "Click Connect MIDI" step, added note that ports auto-create.
+- Updated install hint to use `pip install -e '.[tools]'`.
+
+### How It Works Now
+1. `./tools/run-virtualizer.sh` — starts backend, auto-creates MIDI ports, opens browser
+2. `nova-script live-show` — discovers virtual "Launchpad Mini" ports, connects immediately
+3. Click pads in browser → nova-script processes events
+4. nova-script LED updates → visualizer renders them with LED-accurate colors
+
+### Files Changed
+- `src/engine.py` — Longer wave timing, buffer pauses
+- `src/ui/startup_wave.py` — dirty_cells optimization
+- `src/ui/modes/performance.py` — Disabled FX: OFF instead of RED_HIGH
+- `src/ui/overlay_manager.py` — Fix duplicate render in screensaver cycle
+- `src/ui/image_store.py` — Replace peace with smiley (image 8)
+- `config/screensaver-images.yaml` — Smiley pixel art
+- `src/midi/manager.py` — Poll guard for None port
+- `tools/novation-virtualizer.py` — Auto-connect + clean shutdown
+- `tools/run-virtualizer.sh` — Updated instructions
+- `tools/test_integration.py` — New: end-to-end test script
+- `pyproject.toml` — websockets optional dependency
+- `BUILD_LOG.md` — This entry
