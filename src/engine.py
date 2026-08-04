@@ -88,14 +88,18 @@ class Engine:
         self._image_store = ImageStore()
         self._setup_overlay()
 
+        await asyncio.sleep(0.15)
+
         self._startup_wave = StartupWave(self.grid, self.controllers["Launchpad Mini"])
         self._startup_wave.start()
         sim_time = self._startup_wave._start
-        for _ in range(80):
+        for _ in range(120):
             if not self._startup_wave.tick(now=sim_time):
                 break
-            sim_time += 0.05
-            await asyncio.sleep(0.03)
+            sim_time += 0.06
+            await asyncio.sleep(0.05)
+
+        await asyncio.sleep(0.2)
 
         self._setup_modes()
 

@@ -214,7 +214,7 @@ class PerformanceMode(Mode):
                 fx_type = fx.get("type", "toggle")
 
                 if not enabled:
-                    color = LogicalColor.RED_HIGH
+                    color = LogicalColor.OFF
                 elif fx_type == "time_based":
                     beat_phase = (time.monotonic() * self._bpm / 60.0) % 1.0
                     pulse = (math.sin(beat_phase * math.pi * 2) + 1) / 2

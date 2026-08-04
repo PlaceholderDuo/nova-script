@@ -65,6 +65,5 @@ class StartupWave:
         return True
 
     def _commit(self):
-        for x in range(8):
-            for y in range(8):
-                self.controller.set_grid_color(x, y, self.grid.get_cell(x, y))
+        for x, y in self.grid.dirty_cells():
+            self.controller.set_grid_color(x, y, self.grid.get_cell(x, y))
