@@ -1243,3 +1243,51 @@ nova-script [profile] or nova-script --tui [profile]
 4. Test auto-reconnect with cable bump
 5. Build ReaperOSC → Reaper bridge test
 6. Future: TUI profile builder (drag-and-drop mode layouts)
+
+---
+
+## Entry #13 — 2026-08-04 — BPM Clock System + Settings UI
+
+### Changes Made
+
+- **BPMClock** (`src/midi/clock.py`): Multi-source tempo sync with configurable priority.
+  Sources: "Reaper (OSC)" (OSC /beat), any MIDI port name (MIDI clock 0xF8), "Internal".
+  Configurable preferred/fallback hierarchy. Auto-detects active sources.
+  Respects preferred source — if Reaper OSC is active, ignores MIDI clock.
+  Internal clock always available as ultimate fallback.
+
+- **Top-1 LED BPM Blink:** Button 1 blinks at BPM tempo on ALL pages.
+  Orange when on Menu (home), green when on any other mode.
+  80ms LED-on flash per beat, then off. Color reflects "press to go somewhere" semantics.
+
+- **Settings Screen** (TUI): Built out with dynamic MIDI port discovery.
+  Shows "Reaper (OSC)", "Internal", and all detected MIDI input ports.
+  Preferred/fallback source selection. Internal BPM + idle timeout display.
+  Save & Close button. Accessible via S key in TUI.
+
+### Design Decision: Clock Source Naming
+After researching, the correct approach:
+- "Reaper (OSC)" — special entry for OSC beat sync (Reaper sends /beat over UDP)
+- Any MIDI port name — MIDI clock (0xF8, 24 per quarter note) from USB MIDI
+- "Internal" — software timer fallback
+
+This is cleaner than naming by device function because:
+1. Devices expose MIDI ports by name, not by brand
+2. The user sees the actual port names they recognize
+3. Works regardless of what hardware is connected
+4. Settings menu populates dynamically at runtime
+
+### Files Changed
+- `src/midi/clock.py` — New: multi-source BPM clock
+- `src/engine.py` — BPMClock integration, beat callback, Top-1 LED blink
+- `src/tui/app.py` — Settings screen with port discovery, config passing
+- `src/main.py` — Pass config to TUI
+- `config/profiles/live-show.yaml` — Updated clock config format
+- `BUILD_LOG.md` — This entry
+
+### Next Actions
+1. Test BPM blink on hardware with Launchpad
+2. Add MIDI clock message detection in event loop (0xF8 → clock.feed_midi_clock)
+3. Build clock source selection UI in settings dropdown
+4. Test with Reaper OSC /beat sync
+5. Test with Akai Force MIDI clock sync

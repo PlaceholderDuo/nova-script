@@ -40,7 +40,9 @@ async def run_engine(config: dict, with_tui: bool = False):
     tui_thread = None
     if with_tui and tui_queue:
         from src.tui.app import run_tui
-        tui_thread = threading.Thread(target=run_tui, args=(tui_queue,), daemon=True)
+        tui_thread = threading.Thread(
+            target=run_tui, args=(tui_queue, config), daemon=True
+        )
         tui_thread.start()
 
     try:

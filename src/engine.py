@@ -23,6 +23,7 @@ from src.ui.image_store import ImageStore
 from src.osc.bridge import OscBridge
 from src.controllers.color_map import LogicalColor
 from src.ui.combo_detector import ComboDetector
+from src.midi.clock import BPMClock
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +40,13 @@ class Engine:
         self._combo: Optional[ComboDetector] = None
         self._startup_wave: Optional[StartupWave] = None
         self._image_store: Optional[ImageStore] = None
+        self._clock: Optional[BPMClock] = None
         self._running = False
         self._last_tick = time.monotonic()
         self._tui_queue: Optional[Queue] = tui_queue
         self._idle_timeout_ms: int = 30000
+        self._beat_led_on: bool = False
+        self._beat_led_off_time: float = 0.0
         self._message_mode: Optional[MessageMode] = None
 
     def set_tui_queue(self, queue):
@@ -145,6 +149,13 @@ class Engine:
         )
         self.overlay.start()
         self._combo = ComboDetector()
+        clock_cfg = self.config.get("midi", {}).get("clock", {})
+        self._clock = BPMClock(
+            default_bpm=float(clock_cfg.get("internal_bpm", 120)),
+            preferred=clock_cfg.get("preferred", "Reaper"),
+            fallback=clock_cfg.get("fallback", "Internal"),
+        )
+        self._clock.set_on_beat(self._on_beat)
         sc_config = self.config.get("screensaver", {})
         if sc_config.get("cycle_enabled"):
             self.overlay.set_screensaver_cycle(True)
@@ -247,6 +258,23 @@ class Engine:
             return
         self.mode_manager.switch_to(mode_name)
 
+    def _set_home_led(self):
+        """Set Top-1 LED: orange at home, green elsewhere."""
+        lp = self.controllers.get("Launchpad Mini")
+        if lp is None:
+            return
+        at_home = self.mode_manager and self.mode_manager.active_mode_name == "menu"
+        color = LogicalColor.AMBER_HIGH if at_home else LogicalColor.GREEN_HIGH
+        if self._beat_led_on:
+            lp.send_top_row_led(0, color)
+        else:
+            lp.send_top_row_led(0, LogicalColor.OFF)
+
+    def _on_beat(self, beat_count: int):
+        self._beat_led_on = True
+        self._beat_led_off_time = time.monotonic() + 0.08
+        self._set_home_led()
+
     def _on_osc_message(self, msg: dict):
         msg_type = msg.get("type")
         logger.debug(f"OSC received: {msg_type}")
@@ -270,6 +298,13 @@ class Engine:
         now = time.monotonic()
         delta_ms = (now - self._last_tick) * 1000
         self._last_tick = now
+
+        if self._clock:
+            self._clock.tick(now)
+
+        if self._beat_led_on and now >= self._beat_led_off_time:
+            self._beat_led_on = False
+            self._set_home_led()
 
         if self._combo:
             result = self._combo.tick()

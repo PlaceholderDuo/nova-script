@@ -5,7 +5,8 @@ midi:
   outputs:
     force: "Akai Force"
   clock:
-    source: internal
+    preferred: "Reaper (OSC)"
+    fallback: "Internal"
     internal_bpm: 120
 
 osc:

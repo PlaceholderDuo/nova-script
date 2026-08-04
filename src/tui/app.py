@@ -69,31 +69,101 @@ class LaunchpadGrid(Vertical):
 
 
 class SettingsScreen(ModalScreen):
-    """Settings modal overlay."""
+    """Settings modal — BPM clock sources, timeouts, etc."""
     CSS = """
         SettingsScreen {
             align: center middle;
         }
         #settings-dialog {
-            width: 50;
-            height: 20;
+            width: 56;
+            height: 24;
             border: thick $primary;
             background: $surface;
             padding: 1;
+        }
+        .setting-row {
+            height: 1;
+            margin: 1 0;
+        }
+        .setting-label {
+            width: 22;
+        }
+        #settings-sources {
+            height: 6;
+            border: solid $border;
+            background: $surface-darken-1;
+            padding: 0 1;
         }
     """
 
     BINDINGS = [("escape", "dismiss", "Close")]
 
+    def __init__(self, config: dict, profile_name: str):
+        super().__init__()
+        self._config = config
+        self._profile_name = profile_name
+
     def compose(self) -> ComposeResult:
+        import rtmidi
+        ports = ["Reaper (OSC)", "Internal"]
+        try:
+            mi = rtmidi.MidiIn()
+            ports += [p for p in mi.get_ports() if p not in ports]
+            mi.delete()
+        except Exception:
+            pass
+
+        clock = self._config.get("midi", {}).get("clock", {})
+        preferred = clock.get("preferred", "Reaper (OSC)")
+        fallback = clock.get("fallback", "Internal")
+        idle = self._config.get("ui", {}).get("idle_timeout_ms", 30000)
+
         with Container(id="settings-dialog"):
-            yield Static("Settings — coming soon")
-            yield Static("Ports, timeouts, BPM, and more will be configurable here.")
-            yield Button("Close", variant="primary", id="close-settings")
+            yield Static("Settings — nova-script")
+            yield Static("")
+
+            with Horizontal(classes="setting-row"):
+                yield Static("BPM Preferred:", classes="setting-label")
+                yield ListView(
+                    *[ListItem(Label(p)) for p in ports],
+                    id="preferred-list",
+                    classes="source-list",
+                )
+            with Horizontal(classes="setting-row"):
+                yield Static("BPM Fallback:", classes="setting-label")
+                yield ListView(
+                    *[ListItem(Label(p)) for p in ports],
+                    id="fallback-list",
+                    classes="source-list",
+                )
+            yield Static(f"  Internal BPM: {clock.get('internal_bpm', 120)}")
+            yield Static(f"  Idle timeout: {idle // 1000}s")
+            yield Static("")
+
+            yield Static(id="settings-sources")
+            yield Static("")
+            with Horizontal():
+                yield Button("Save & Close", variant="primary", id="save-settings")
+                yield Button("Close", id="close-settings")
+
+    def on_mount(self):
+        import rtmidi
+        sources = ["Reaper (OSC)", "Internal"]
+        try:
+            mi = rtmidi.MidiIn()
+            sources += [p for p in mi.get_ports() if p not in sources]
+            mi.delete()
+        except Exception:
+            pass
+        self.query_one("#settings-sources", Static).update(
+            f"Available MIDI clock sources:\n  " + "\n  ".join(sources)
+        )
 
     def on_button_pressed(self, event: Button.Pressed):
         if event.button.id == "close-settings":
             self.dismiss()
+        elif event.button.id == "save-settings":
+            self.dismiss(self._config)
 
 
 class ProfileScreen(ModalScreen):
@@ -188,9 +258,10 @@ class NovaTUI(App):
         Binding("r", "refresh", "Refresh"),
     ]
 
-    def __init__(self, engine_queue):
+    def __init__(self, engine_queue, config: dict = None):
         super().__init__()
         self._engine_queue = engine_queue
+        self._config = config or {}
         self._grid: LaunchpadGrid | None = None
         self._status: Static | None = None
         self._devices: Static | None = None
@@ -262,7 +333,7 @@ class NovaTUI(App):
         self.push_screen(ProfileScreen(self._pm), handle)
 
     def action_settings(self):
-        self.push_screen(SettingsScreen())
+        self.push_screen(SettingsScreen(self._config, "live-show"))
 
     def _add_log(self, text: str):
         from datetime import datetime
@@ -274,6 +345,6 @@ class NovaTUI(App):
             self._log.update("\n".join(self._log_lines))
 
 
-def run_tui(engine_queue):
-    app = NovaTUI(engine_queue)
+def run_tui(engine_queue, config: dict = None):
+    app = NovaTUI(engine_queue, config)
     app.run()
