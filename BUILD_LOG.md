@@ -1063,3 +1063,60 @@ Designing a virtual hardware emulator for comprehensive testing:
 3. Build image storage + load/save
 4. Build overlay dismiss/restore flow
 5. Build startup wave animation
+
+---
+
+## Entry #10 — 2026-08-04 — Startup Wave, Image Store, Overlay System (all tested via virtualizer)
+
+### Changes Made
+
+- **Startup Wave** (`src/ui/startup_wave.py`): Diagonal color ripple animation.
+  Amber wave from bottom-left to top-right, green follows, red follows.
+  73 frames simulated, max 64 cells lit at peak. Clean grid at end.
+  Tested via virtualizer: all 8×8 cells lit by wave, verified clean exit.
+
+- **Image Store** (`src/ui/image_store.py`): 64-image persistence system.
+  YAML format: name + 8×8 LogicalColor grid per image.
+  8 default images: waves, heart, checker, xmarks, diamond, all_amber/red/green.
+  8 quick-access slots mapped to top-row buttons. Persistent across restarts.
+  `render_to_grid()` writes image directly to LogicalGrid.
+  Store/retrieve round-trip verified. Quick slot persistence verified.
+  Temp file test: clean create, save, reload, tear down.
+
+- **Overlay Manager** (`src/ui/overlay_manager.py`): Priority-based overlay stack.
+  Priorities: Fireworks(4) > HUD(3) > Screensaver(2) > ActiveMode(1).
+  Two-press dismiss: first press consumed, second press passes to mode.
+  Fireworks → auto-transition to screensaver on completion.
+  HUD → auto-dismiss to previous state (screensaver or mode).
+  Idle timeout → auto-enter screensaver.
+  Screensaver BPM cycling support, image switching via `_render_screensaver_image()`.
+  
+  5 integration tests all passing via virtualizer:
+  1. Startup wave: 73 frames, max 64 lit, clean exit
+  2. Idle → screensaver → dismiss: timeout works, two-press flow correct
+  3. Fireworks → screensaver: 173 frames, auto-transition verified
+  4. HUD overlay: character 'G' renders correctly, auto-dismiss to screensaver
+  5. Screensaver image pick: heart/checker render, quick slot persistence
+
+### Risk Resolution Status
+| Risk | Status |
+|------|--------|
+| Multi-button combos | RESOLVED (7 unit tests passing) |
+| Fireworks particle system | RESOLVED (200-frame simulation, clean exit) |
+| Image storage format | RESOLVED (YAML, 8 defaults, persistence) |
+| Overlay dismiss flow | RESOLVED (5 integration tests, 2-press dismiss) |
+| Startup wave | RESOLVED (virtualizer test, 73 frames) |
+| Screensaver picker | RESOLVED (image switching, quick slots) |
+
+### Files Changed
+- `src/ui/startup_wave.py` — New: diagonal color wave boot animation
+- `src/ui/image_store.py` — New: 64-image YAML persistence with 8 defaults
+- `src/ui/overlay_manager.py` — New: priority overlay system
+- `tests/test_overlay_system.py` — New: 5-scenario integration test (all passing)
+
+### Next Actions
+1. Wire overlay system into Engine
+2. Integrate ComboDetector with Engine for manual triggers
+3. Rebuild TUI with new spec layout
+4. Test with physical hardware when Launchpad reconnected
+5. Build effects/device control modes
