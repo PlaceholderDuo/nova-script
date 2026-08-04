@@ -391,73 +391,73 @@ images:
     - *id003
     - *id003
     - *id003
-  8:
-    name: peace
-    grid:
-    - - 'OFF'
-      - AMBER_HIGH
-      - AMBER_HIGH
-      - AMBER_HIGH
-      - AMBER_HIGH
-      - AMBER_HIGH
-      - AMBER_HIGH
-      - 'OFF'
-    - - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-    - - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-    - - AMBER_HIGH
-      - 'OFF'
-      - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-      - 'OFF'
-      - AMBER_HIGH
-    - - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-      - AMBER_HIGH
-    - - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-    - - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-    - - 'OFF'
-      - AMBER_HIGH
-      - AMBER_HIGH
-      - AMBER_HIGH
-      - AMBER_HIGH
-      - AMBER_HIGH
-      - AMBER_HIGH
-      - 'OFF'
+   8:
+     name: smiley
+     grid:
+     - - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+     - - 'OFF'
+       - AMBER_HIGH
+       - AMBER_HIGH
+       - 'OFF'
+       - 'OFF'
+       - AMBER_HIGH
+       - AMBER_HIGH
+       - 'OFF'
+     - - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - AMBER_HIGH
+       - AMBER_HIGH
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+     - - AMBER_HIGH
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - AMBER_HIGH
+     - - 'OFF'
+       - AMBER_HIGH
+       - AMBER_HIGH
+       - AMBER_HIGH
+       - AMBER_HIGH
+       - AMBER_HIGH
+       - AMBER_HIGH
+       - 'OFF'
+     - - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+     - - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+     - - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
+       - 'OFF'
 quick_slots:
   0: 1
   1: 8
