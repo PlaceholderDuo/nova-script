@@ -70,6 +70,14 @@ images:
     name: heart
     grid:
     - - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+    - - 'OFF'
       - RED_HIGH
       - RED_HIGH
       - 'OFF'
@@ -114,14 +122,6 @@ images:
       - 'OFF'
       - RED_HIGH
       - RED_HIGH
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-    - - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
       - 'OFF'
       - 'OFF'
       - 'OFF'
@@ -415,14 +415,6 @@ images:
       - AMBER_HIGH
       - 'OFF'
       - 'OFF'
-      - AMBER_HIGH
-      - 'OFF'
-      - AMBER_HIGH
-    - - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-      - AMBER_HIGH
       - 'OFF'
       - 'OFF'
       - AMBER_HIGH
@@ -430,13 +422,21 @@ images:
       - 'OFF'
       - 'OFF'
       - AMBER_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - AMBER_HIGH
+    - - AMBER_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
       - AMBER_HIGH
       - 'OFF'
       - 'OFF'
       - AMBER_HIGH
     - - AMBER_HIGH
       - 'OFF'
-      - AMBER_HIGH
+      - 'OFF'
       - 'OFF'
       - 'OFF'
       - AMBER_HIGH

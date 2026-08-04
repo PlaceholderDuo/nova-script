@@ -87,7 +87,6 @@ class Engine:
         self._idle_timeout_ms = self.config.get("ui", {}).get("idle_timeout_ms", 30000)
         self._image_store = ImageStore()
         self._setup_overlay()
-        self._setup_modes()
 
         self._startup_wave = StartupWave(self.grid, self.controllers["Launchpad Mini"])
         self._startup_wave.start()
@@ -97,6 +96,8 @@ class Engine:
                 break
             sim_time += 0.05
             await asyncio.sleep(0.03)
+
+        self._setup_modes()
 
         self._running = True
         self._last_tick = time.monotonic()

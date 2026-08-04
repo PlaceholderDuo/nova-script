@@ -232,10 +232,10 @@ class OverlayManager:
     def _tick_screensaver(self, now: float):
         if self._screensaver_cycle:
             if now - self._screensaver_last_cycle >= self._screensaver_cycle_interval:
-                self._screensaver_last_cycle = now
-                slot = self._screensaver_cycle_index % 2
-                self._screensaver_cycle_index += 1
-                img_id = self.image_store.get_quick_slot(slot)
+            self._screensaver_last_cycle = now
+            self._screensaver_cycle_index += 1
+            slot = self._screensaver_cycle_index % 2
+            img_id = self.image_store.get_quick_slot(slot)
                 if img_id is not None:
                     self._screensaver_image = img_id
                     self._render_screensaver_image()

@@ -1,6 +1,6 @@
 """
 Startup wave animation — color ripple from bottom-left to top-right.
-Runs independently of the overlay system as a one-shot boot animation.
+Overlapping colors with brightness fade for smooth trailing effect.
 """
 import math
 import logging
@@ -10,13 +10,12 @@ from src.layout.grid import LogicalGrid
 logger = logging.getLogger(__name__)
 
 WAVE_COLORS = [
-    (LogicalColor.AMBER_HIGH, "amber"),
-    (LogicalColor.GREEN_HIGH, "green"),
-    (LogicalColor.RED_HIGH, "red"),
+    (LogicalColor.AMBER_HIGH, LogicalColor.AMBER_MED, LogicalColor.AMBER_LOW),
+    (LogicalColor.GREEN_HIGH, LogicalColor.GREEN_MED, LogicalColor.GREEN_LOW),
+    (LogicalColor.RED_HIGH, LogicalColor.RED_MED, LogicalColor.RED_LOW),
 ]
 
-WAVE_DELAY = 0.3  # seconds between color waves
-WAVE_SPEED = 0.08  # seconds per diagonal band
+WAVE_SPEED = 0.06  # seconds per diagonal band
 
 
 class StartupWave:
@@ -24,11 +23,9 @@ class StartupWave:
         self.grid = grid
         self.controller = controller
         self._start = 0.0
-        self._color_idx = 0
 
     def start(self):
         self._start = __import__("time").monotonic()
-        self._color_idx = 0
         logger.info("Startup wave: amber → green → red")
 
     def tick(self, now: float | None = None) -> bool:
@@ -37,86 +34,44 @@ class StartupWave:
             now = __import__("time").monotonic()
 
         elapsed = now - self._start
-        wave_offset = WAVE_DELAY * (self._color_idx + 1)
+        total_bands = 15  # max diagonal bands (0 through 14)
+        bands_per_color = total_bands + 10  # each color wave spans ~25 bands
+        total_duration = bands_per_color * WAVE_SPEED * 3 + WAVE_SPEED * 5
 
-        if self._color_idx < len(WAVE_COLORS):
-            color, _ = WAVE_COLORS[self._color_idx]
-            bands_to_light = int(elapsed / WAVE_SPEED)
-
+        if elapsed >= total_duration:
             self.grid.clear()
-            self._render_diagonal_bands(bands_to_light, 3, color)
-
-            if bands_to_light >= 15:
-                self._color_idx += 1
-                self._start = now
-
             self._commit()
-            return True
+            return False
 
         self.grid.clear()
+
+        for ci, (high, med, low) in enumerate(WAVE_COLORS):
+            color_offset = ci * 6  # stagger colors by 6 bands
+            lead = int((elapsed - color_offset * WAVE_SPEED) / WAVE_SPEED)
+            for band in range(max(0, lead - 4), lead + 1):
+                pos = band - lead + 4
+                if pos <= 1:
+                    c = high
+                elif pos <= 2:
+                    c = med
+                elif pos <= 4:
+                    c = low
+                else:
+                    c = LogicalColor.OFF
+
+                for d in range(band + 1):
+                    x = d
+                    y = band - d
+                    if 0 <= x < 8 and 0 <= y < 8:
+                        existing = self.grid.get_cell(x, y)
+                        if existing == LogicalColor.OFF or c != LogicalColor.OFF:
+                            if c != LogicalColor.OFF:
+                                self.grid.set_cell(x, y, c)
+
         self._commit()
-        return False
-
-    def _render_diagonal_bands(self, num_bands: int, tail: int, color: LogicalColor):
-        for band in range(num_bands):
-            brightness = 3 - min(2, (num_bands - band - 1))
-            c = color if brightness >= 1 else LogicalColor.OFF
-
-            for d in range(band + 1):
-                x = d
-                y = band - d
-                if 0 <= x < 8 and 0 <= y < 8:
-                    self.grid.set_cell(x, y, c)
+        return True
 
     def _commit(self):
         for x, y in self.grid.dirty_cells():
             color = self.grid.get_cell(x, y)
             self.controller.set_grid_color(x, y, color)
-
-
-def test_startup_wave():
-    """Validate the startup wave renders correctly via virtualizer."""
-    import time as t
-    from tests.virtualizer import VirtualLaunchpad
-
-    print("=== STARTUP WAVE TEST ===\n")
-
-    v = VirtualLaunchpad()
-    v.on_connect()
-
-    logical_grid = LogicalGrid(8, 8)
-
-    def commit_grid():
-        for x, y in logical_grid.dirty_cells():
-            color = logical_grid.get_cell(x, y)
-            v.controller.set_grid_color(x, y, color)
-
-    logical_grid.set_on_cell_changed(lambda x, y, c: None)
-
-    wave = StartupWave(logical_grid, v.controller)
-    wave._commit = commit_grid
-
-    wave.start()
-    sim_time = wave._start
-    frames = 0
-    shown = set()
-
-    while wave.tick(now=sim_time):
-        frames += 1
-        sim_time += 0.05
-        key_frames = [1, 6, 12, 18, 24]
-        for kf in key_frames:
-            if kf not in shown and frames >= kf:
-                shown.add(kf)
-                print(v.render(f"Frame {frames} (t={sim_time - wave._start:.2f}s)"))
-                print()
-
-    print(v.render("Final: all OFF"))
-    print(f"\n✓ Startup wave completed in {frames} frames")
-    print(f"✓ Grid clean after animation")
-
-    return True
-
-
-if __name__ == "__main__":
-    test_startup_wave()
