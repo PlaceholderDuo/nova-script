@@ -1291,3 +1291,40 @@ This is cleaner than naming by device function because:
 3. Build clock source selection UI in settings dropdown
 4. Test with Reaper OSC /beat sync
 5. Test with Akai Force MIDI clock sync
+
+---
+
+## Entry #14 — 2026-08-04 — Chill Mode + Default Launch Behavior
+
+### Changes Made
+
+- **Chill Mode** (`src/ui/chill_mode.py`): Ambient LED patterns for standby display.
+  5 patterns that auto-cycle every 25-35 seconds with smooth transitions:
+  - **Wave** (30s): Horizontal amber wave sweeping side to side with fading edges
+  - **Breathe** (25s): All pads pulse in unison — slow sine-wave brightness breathing
+  - **Starfield** (35s): 10 scattered dim lights fading in/out independently
+  - **Rain** (25s): 6 gentle falling droplets with trailing fade
+  - **Gradient** (30s): Diagonal color gradient that slowly rotates
+  Colors are amber/red/green at low brightness — never harsh or flashing.
+  Inspired by keyboard backlighting effects.
+
+- **CLI update** (`src/main.py`): `nova-script` with no arguments now enters chill mode
+  instead of loading live-show profile. Explicit profile name still works:
+  `nova-script live-show` → full engine. Default behavior is now ambient lighting.
+
+### How it works
+1. `nova-script` → connects to Launchpad only → runs chill patterns
+2. Patterns cycle automatically, ~30s each, with smooth transitions
+3. Ctrl+C to exit, Launchpad clears
+4. No OSC, no button handling, no profiles — just ambient LED art
+
+### Files Changed
+- `src/ui/chill_mode.py` — New: ambient pattern engine
+- `src/main.py` — No-args now runs chill mode
+- `tests/test_chill_mode.py` — New: virtualizer pattern verification
+- `BUILD_LOG.md` — This entry
+
+### Next Actions
+- Add more chill patterns over time
+- Make pattern selection configurable
+- Allow transition between chill mode → full engine on button press

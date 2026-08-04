@@ -22,6 +22,12 @@ from src.profiles import ProfileManager
 from src.engine import Engine
 
 
+async def run_chill():
+    setup_logging(logging.INFO)
+    from src.ui.chill_mode import run_chill_mode
+    await run_chill_mode()
+
+
 def setup_logging(level: int = logging.INFO):
     logging.basicConfig(
         level=level,
@@ -84,8 +90,7 @@ def main():
     args = sys.argv[1:]
 
     if not args:
-        config = ProfileManager().load("live-show")
-        asyncio.run(run_engine(config))
+        asyncio.run(run_chill())
         return
 
     if args[0] == "list":
