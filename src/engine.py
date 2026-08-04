@@ -17,6 +17,7 @@ from src.ui.modes.sequencer import SequencerMode
 from src.ui.modes.mixer import MixerMode
 from src.ui.modes.message import MessageMode
 from src.ui.modes.performance import PerformanceMode
+from src.ui.modes.clip_launcher import ClipLauncherMode
 from src.ui.overlay_manager import OverlayManager
 from src.ui.startup_wave import StartupWave
 from src.ui.image_store import ImageStore
@@ -177,7 +178,7 @@ class Engine:
         else:
             menu_mode.set_items([
                 {"label": "PERF", "mode": "performance", "color": "RED_HIGH", "x": 0, "y": 6, "w": 2, "h": 2},
-                {"label": "CLIP", "mode": "performance", "color": "RED_MED", "x": 2, "y": 6, "w": 2, "h": 2},
+                {"label": "CLIP", "mode": "clip_launcher", "color": "RED_MED", "x": 2, "y": 6, "w": 2, "h": 2},
                 {"label": "SEQ", "mode": "sequencer", "color": "AMBER_HIGH", "x": 4, "y": 6, "w": 2, "h": 2},
                 {"label": "MIX", "mode": "mixer", "color": "GREEN_HIGH", "x": 0, "y": 4, "w": 2, "h": 2},
             ])
@@ -210,6 +211,15 @@ class Engine:
             osc_bridge=self.osc,
         )
         self.mode_manager.register(performance)
+
+        clip_launcher = ClipLauncherMode(
+            self.grid,
+            self.controllers["Launchpad Mini"],
+            config=self.config.get("clip_launcher"),
+            osc_bridge=self.osc,
+            midi_manager=self.midi_manager,
+        )
+        self.mode_manager.register(clip_launcher)
 
         default_mode = self.config.get("ui", {}).get("default_mode", "menu")
         self.mode_manager.switch_to(default_mode)
@@ -252,6 +262,16 @@ class Engine:
             if result == "fireworks":
                 self.overlay.trigger_fireworks()
                 return
+
+        is_press = "PRESS" in event.event_type.name
+        if is_press and not self.overlay.is_overlay_active:
+            shortcuts = {201: "performance", 202: "clip_launcher", 203: "sequencer", 204: "mixer"}
+            if event.control_id in shortcuts:
+                mode_name = shortcuts[event.control_id]
+                if mode_name in self.mode_manager._modes:
+                    self.mode_manager.switch_to(mode_name)
+                    return
+
         if self.overlay:
             if self.overlay.handle_control_event(event):
                 return

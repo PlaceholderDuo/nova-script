@@ -1,0 +1,168 @@
+"""
+Clip Launcher — 8×8 grid of launchable clips with MIDI + OSC output.
+
+Grid: 8 tracks × 8 scenes. Press to launch/stop. Right column = scene launch.
+Bottom row = track stop. Long press = clear clip.
+"""
+import time
+import logging
+
+from src.controllers.base import GridEvent, ControlEvent, LogicalColor
+from src.ui.mode import Mode
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_CLIPS = []
+for scene in range(8):
+    for track in range(8):
+        idx = scene * 8 + track
+        DEFAULT_CLIPS.append({
+            "track": track, "scene": scene,
+            "label": f"T{track+1}S{scene+1}",
+            "midi_note": 60 + track + scene * 12,
+            "midi_channel": 0,
+            "midi_vel": 100,
+            "osc_addr": f"/nova/clip/{track}/{scene}",
+        })
+
+
+class ClipLauncherMode(Mode):
+    def __init__(self, grid, controller, config: dict | None = None, osc_bridge=None, midi_manager=None):
+        super().__init__("clip_launcher", grid, controller)
+        self.osc_bridge = osc_bridge
+        self.midi_manager = midi_manager
+        clips_cfg = config.get("clips", DEFAULT_CLIPS) if config else DEFAULT_CLIPS
+        self._clips = clips_cfg
+        self._playing: set[int] = set()
+        self._num_tracks = 8
+        self._num_scenes = 8
+
+    def enter(self):
+        self._render()
+
+    def exit(self):
+        self.clear()
+        self.commit()
+
+    def handle_grid_event(self, event: GridEvent):
+        if event.pressed:
+            if self.is_debounced():
+                return
+            x, y = event.x, event.y
+            if y == 0:
+                self._stop_track(x)
+                self._render()
+                return
+            self.track_press(event)
+        else:
+            resolution = self.resolve_press(event)
+            if resolution == "invalid":
+                return
+            x, y = event.x, event.y
+            if resolution == "long":
+                self._clear_clip(x, self._num_scenes - 1 - y)
+            else:
+                self._toggle_clip(x, self._num_scenes - 1 - y)
+            self._render()
+
+    def handle_control_event(self, event: ControlEvent):
+        if not event.event_type.name.endswith("_PRESS"):
+            return
+
+        if event.control_id >= 100:
+            scene_idx = event.control_id - 100
+            scene = self._num_scenes - 1 - scene_idx
+            if 0 <= scene < self._num_scenes:
+                self._launch_scene(scene)
+                self._render()
+
+    def _toggle_clip(self, track: int, scene: int):
+        idx = scene * self._num_tracks + track
+        if idx in self._playing:
+            self._playing.discard(idx)
+            self._stop_output(track, scene, idx)
+        else:
+            for s in range(self._num_scenes):
+                sidx = s * self._num_tracks + track
+                self._playing.discard(sidx)
+            self._playing.add(idx)
+            self._launch_output(track, scene, idx)
+
+    def _launch_scene(self, scene: int):
+        for track in range(self._num_tracks):
+            for s in range(self._num_scenes):
+                sidx = s * self._num_tracks + track
+                self._playing.discard(sidx)
+            idx = scene * self._num_tracks + track
+            self._playing.add(idx)
+            self._launch_output(track, scene, idx)
+
+    def _stop_track(self, track: int):
+        for s in range(self._num_scenes):
+            self._playing.discard(s * self._num_tracks + track)
+
+    def _clear_clip(self, track: int, scene: int):
+        idx = scene * self._num_tracks + track
+        self._playing.discard(idx)
+
+    def _launch_output(self, track: int, scene: int, idx: int):
+        clip = self._clips[idx] if idx < len(self._clips) else None
+        if clip is None:
+            return
+
+        if self.midi_manager:
+            note = clip.get("midi_note", 60)
+            channel = clip.get("midi_channel", 0)
+            vel = clip.get("midi_vel", 100)
+            self.midi_manager.send_message(
+                self.controller.device_name,
+                [0x90 + channel, note, vel],
+            )
+
+        if self.osc_bridge:
+            addr = clip.get("osc_addr", f"/nova/clip/{track}/{scene}")
+            self.osc_bridge.send(addr, 1)
+
+    def _stop_output(self, track: int, scene: int, idx: int):
+        clip = self._clips[idx] if idx < len(self._clips) else None
+        if clip is None:
+            return
+
+        if self.midi_manager:
+            note = clip.get("midi_note", 60)
+            channel = clip.get("midi_channel", 0)
+            self.midi_manager.send_message(
+                self.controller.device_name,
+                [0x90 + channel, note, 0],
+            )
+
+        if self.osc_bridge:
+            addr = clip.get("osc_addr", f"/nova/clip/{track}/{scene}")
+            self.osc_bridge.send(addr, 0)
+
+    def _render(self):
+        self.clear()
+
+        for scene in range(self._num_scenes):
+            display_y = self._num_scenes - 1 - scene
+            for track in range(self._num_tracks):
+                idx = scene * self._num_tracks + track
+                if idx in self._playing:
+                    color = LogicalColor.GREEN_HIGH
+                elif scene == 0:
+                    color = LogicalColor.AMBER_LOW
+                elif scene % 2 == 0:
+                    color = LogicalColor.RED_LOW
+                else:
+                    color = LogicalColor.OFF
+                self.grid.set_cell(track, display_y, color)
+
+        for track in range(self._num_tracks):
+            has_playing = any(
+                (s * self._num_tracks + track) in self._playing
+                for s in range(self._num_scenes)
+            )
+            color = LogicalColor.RED_HIGH if has_playing else LogicalColor.OFF
+            self.grid.set_cell(track, 0, color)
+
+        self.commit()
