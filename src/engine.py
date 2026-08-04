@@ -206,7 +206,7 @@ class Engine:
         performance = PerformanceMode(
             self.grid,
             self.controllers["Launchpad Mini"],
-            midi_manager=self.midi_manager,
+            config=self.config.get("performance"),
             osc_bridge=self.osc,
         )
         self.mode_manager.register(performance)
@@ -358,6 +358,11 @@ class Engine:
                 self.mode_manager.tick(delta_ms)
         elif self.mode_manager:
             self.mode_manager.tick(delta_ms)
+
+        if self._clock and self.mode_manager:
+            pm = self.mode_manager._modes.get("performance")
+            if pm and hasattr(pm, "set_bpm"):
+                pm.set_bpm(self._clock.bpm)
 
     def _tick_press_feedback(self, now: float):
         expired = [k for k, v in self._press_feedback.items() if now >= v]

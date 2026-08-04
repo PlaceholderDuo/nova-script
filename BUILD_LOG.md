@@ -1457,3 +1457,40 @@ Settings screen: Select with all 3 options, saves to profile.
 - src/engine.py — 3-mode downbeat logic, _get_downbeat_color() helper
 - src/tui/app.py — Added "Disable" option to downbeat Select
 - BUILD_LOG.md — This entry
+
+---
+
+## Entry #17 — 2026-08-04 — Performance Mode: Tracks, FX Toggles, Strobe Tuner
+
+### Changes Made
+
+- **Performance Mode rewritten** (`src/ui/modes/performance.py`): Track mute + FX control.
+  - Top row buttons (1-8): track mute toggles with configurable aliases
+  - Right column (1-5): FX toggles — Rev, Dly, Chor, Hrm↑, Hrm↓
+  - Grid: visual state — mute indicators (row 7), FX state (rows 1-5)
+  - FX colors: RED = disabled, GREEN = enabled
+  - Time-based FX (Delay, Chorus): pulse between GREEN_HIGH/GREEN_MED at BPM
+  - Active track indicator: dim green border, others dim amber
+  - 8 tracks configured: Vox, GTR, Bass, Track4-8
+
+- **Tuner Mode:** Hold GTR mute button → strobe tuner activates on 8×8 grid.
+  Dismisses on any button press, returns to performance view.
+  Sine-wave strobe pattern visually indicates tuning state.
+  OSC `/track/{n}/mute` sent on mute toggle.
+
+- **Engine integration:** Performance mode gets BPM from clock system via `set_bpm()`.
+  Config passed from profile's `performance` section.
+
+- **Profile defaults:** 8 tracks with aliases (Vox, GTR, Bass...), 5 FX slots each
+  with OSC addresses for bypass control. All configurable in TUI.
+
+### Virtualizer Verified
+- FX toggles: Vox Rev ON → GREEN, GTR Dly ON → GREEN pulsing at BPM
+- Tuner: GTR mute hold → strobe on full 8×8, dismiss→return to performance
+- Active track: GREEN_LOW indicator at bottom row
+
+### Files Changed
+- `src/ui/modes/performance.py` — Complete rewrite
+- `src/engine.py` — Config pass-through + BPM sync
+- `config/profiles/live-show.yaml` — Performance + mixer channel aliases
+- `BUILD_LOG.md` — This entry

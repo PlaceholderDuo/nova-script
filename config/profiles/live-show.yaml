@@ -42,9 +42,9 @@ modes:
 
 mixer:
   channels:
-    - {index: 0, alias: "Track 1", output: "OSC", curve: "linear", osc_addr: "/track/1/volume"}
-    - {index: 1, alias: "Track 2", output: "OSC", curve: "linear", osc_addr: "/track/2/volume"}
-    - {index: 2, alias: "Track 3", output: "OSC", curve: "linear", osc_addr: "/track/3/volume"}
+    - {index: 0, alias: "Vox", output: "OSC", curve: "linear", osc_addr: "/track/1/volume"}
+    - {index: 1, alias: "GTR", output: "OSC", curve: "linear", osc_addr: "/track/2/volume"}
+    - {index: 2, alias: "Bass", output: "OSC", curve: "linear", osc_addr: "/track/3/volume"}
     - {index: 3, alias: "Track 4", output: "OSC", curve: "linear", osc_addr: "/track/4/volume"}
     - {index: 4, alias: "Track 5", output: "MIDI", curve: "linear", midi_channel: 0, midi_cc: 21}
     - {index: 5, alias: "Track 6", output: "MIDI", curve: "linear", midi_channel: 0, midi_cc: 22}
