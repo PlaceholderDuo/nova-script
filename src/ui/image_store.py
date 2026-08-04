@@ -93,14 +93,14 @@ DEFAULT_IMAGES: dict[int, dict] = {
     8: {
         "name": "peace",
         "grid": [
-            ["OFF", "OFF", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "OFF", "OFF"],
-            ["OFF", "AMBER_HIGH", "OFF", "OFF", "OFF", "OFF", "AMBER_HIGH", "OFF"],
-            ["AMBER_HIGH", "OFF", "AMBER_HIGH", "OFF", "OFF", "OFF", "OFF", "AMBER_HIGH"],
+            ["OFF", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "OFF"],
+            ["AMBER_HIGH", "OFF", "OFF", "OFF", "OFF", "OFF", "OFF", "AMBER_HIGH"],
             ["AMBER_HIGH", "OFF", "OFF", "AMBER_HIGH", "OFF", "OFF", "OFF", "AMBER_HIGH"],
+            ["AMBER_HIGH", "OFF", "AMBER_HIGH", "OFF", "OFF", "AMBER_HIGH", "OFF", "AMBER_HIGH"],
+            ["AMBER_HIGH", "OFF", "OFF", "OFF", "OFF", "OFF", "AMBER_HIGH", "AMBER_HIGH"],
             ["AMBER_HIGH", "OFF", "OFF", "OFF", "AMBER_HIGH", "OFF", "OFF", "AMBER_HIGH"],
-            ["AMBER_HIGH", "OFF", "OFF", "OFF", "OFF", "AMBER_HIGH", "OFF", "AMBER_HIGH"],
-            ["OFF", "AMBER_HIGH", "OFF", "OFF", "OFF", "OFF", "AMBER_HIGH", "OFF"],
-            ["OFF", "OFF", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "OFF", "OFF"],
+            ["AMBER_HIGH", "OFF", "OFF", "OFF", "OFF", "OFF", "OFF", "AMBER_HIGH"],
+            ["OFF", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "AMBER_HIGH", "OFF"],
         ],
     },
 }

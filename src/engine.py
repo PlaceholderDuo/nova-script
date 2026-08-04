@@ -241,6 +241,8 @@ class Engine:
 
     def _on_grid_event(self, event):
         if event.pressed:
+            if self.overlay:
+                self.overlay.mark_activity()
             lp = self.controllers.get("Launchpad Mini")
             if lp:
                 lp.set_grid_color(event.x, event.y, LogicalColor.AMBER_HIGH)
@@ -252,6 +254,8 @@ class Engine:
             self.mode_manager.handle_grid_event(event)
 
     def _on_control_event(self, event):
+        if self.overlay and "PRESS" in event.event_type.name:
+            self.overlay.mark_activity()
         if self._combo:
             result = self._combo.feed(event.control_id, event.pressed)
             if result == "consumed":

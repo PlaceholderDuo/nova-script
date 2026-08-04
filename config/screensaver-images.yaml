@@ -395,68 +395,68 @@ images:
     name: peace
     grid:
     - - 'OFF'
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - 'OFF'
+    - - AMBER_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - AMBER_HIGH
+    - - AMBER_HIGH
+      - 'OFF'
+      - 'OFF'
+      - AMBER_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - AMBER_HIGH
+    - - AMBER_HIGH
+      - 'OFF'
+      - AMBER_HIGH
+      - 'OFF'
+      - 'OFF'
+      - AMBER_HIGH
+      - 'OFF'
+      - AMBER_HIGH
+    - - AMBER_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
       - 'OFF'
       - AMBER_HIGH
       - AMBER_HIGH
-      - AMBER_HIGH
+    - - AMBER_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
       - AMBER_HIGH
       - 'OFF'
       - 'OFF'
+      - AMBER_HIGH
+    - - AMBER_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - AMBER_HIGH
     - - 'OFF'
       - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-      - 'OFF'
-    - - AMBER_HIGH
-      - 'OFF'
-      - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-    - - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-    - - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-    - - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-      - 'OFF'
-      - AMBER_HIGH
-    - - 'OFF'
-      - AMBER_HIGH
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - 'OFF'
-      - AMBER_HIGH
-      - 'OFF'
-    - - 'OFF'
-      - 'OFF'
       - AMBER_HIGH
       - AMBER_HIGH
       - AMBER_HIGH
       - AMBER_HIGH
-      - 'OFF'
+      - AMBER_HIGH
       - 'OFF'
 quick_slots:
   0: 1
