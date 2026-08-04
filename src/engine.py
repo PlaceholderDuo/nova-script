@@ -380,9 +380,12 @@ class Engine:
             self.mode_manager.tick(delta_ms)
 
         if self._clock and self.mode_manager:
+            for mode_name in ("performance", "clip_launcher"):
+                m = self.mode_manager._modes.get(mode_name)
+                if m and hasattr(m, "set_bpm"):
+                    m.set_bpm(self._clock.bpm)
             pm = self.mode_manager._modes.get("performance")
-            if pm and hasattr(pm, "set_bpm"):
-                pm.set_bpm(self._clock.bpm)
+            if pm and hasattr(pm, "set_hints_config"):
                 ui = self.config.get("ui", {})
                 pm.set_hints_config(
                     ui.get("hints_enabled", True),
