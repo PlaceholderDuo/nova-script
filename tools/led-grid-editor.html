@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LED Grid Editor</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 12px;
+}
+h1 { font-size: 18px; margin-bottom: 8px; color: #e94560; }
+
+.controls {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin-bottom: 8px; justify-content: center;
+}
+.controls label { font-size: 12px; display: flex; align-items: center; gap: 3px; }
+.controls input[type="number"] {
+  width: 52px; padding: 3px 4px; background: #16213e; border: 1px solid #0f3460;
+  color: #eee; border-radius: 4px; font-size: 13px;
+}
+.controls select {
+  padding: 3px 6px; background: #16213e; border: 1px solid #0f3460;
+  color: #eee; border-radius: 4px; font-size: 13px;
+}
+.controls button {
+  padding: 4px 10px; background: #e94560; border: none; color: #fff;
+  border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;
+}
+.controls button:hover { background: #c73650; }
+.controls button.secondary { background: #0f3460; }
+.controls button.secondary:hover { background: #16213e; }
+.controls input[type="range"] { width: 80px; accent-color: #e94560; }
+.controls .sep { width: 1px; height: 20px; background: #0f3460; margin: 0 4px; }
+
+#container {
+  position: relative; border: 2px solid #0f3460; border-radius: 4px;
+  overflow: hidden; background: #0a0a14;
+}
+canvas { display: block; cursor: pointer; }
+
+#color-picker {
+  display: none; position: absolute; background: #16213e; border: 1px solid #e94560;
+  border-radius: 6px; padding: 8px; z-index: 10; min-width: 200px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+#color-picker h3 { font-size: 12px; margin-bottom: 6px; color: #e94560; }
+.color-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+.color-btn {
+  padding: 5px 4px; border: 1px solid #0f3460; border-radius: 3px;
+  cursor: pointer; font-size: 10px; font-weight: 600; transition: transform 0.1s;
+}
+.color-btn:hover { transform: scale(1.05); border-color: #e94560; }
+.color-btn.red { background: #8b0000; color: #ff6666; }
+.color-btn.green { background: #003300; color: #66ff66; }
+.color-btn.amber { background: #4a2e00; color: #ffcc66; }
+.color-btn.orange { background: #4a1e00; color: #ff9944; }
+.color-btn.yellow { background: #3a3a00; color: #ffff66; }
+.color-btn.white { background: #333; color: #fff; }
+.color-btn.blue { background: #000033; color: #6666ff; }
+.color-btn.purple { background: #1a0033; color: #cc66ff; }
+.color-btn.cyan { background: #003333; color: #66ffff; }
+.color-btn.off { background: #111; color: #666; }
+.rgb-custom { margin-top: 6px; display: flex; gap: 4px; align-items: center; }
+.rgb-custom input { width: 42px; padding: 2px 3px; background: #111; border: 1px solid #0f3460; color: #eee; border-radius: 3px; font-size: 11px; }
+.rgb-custom button { padding: 3px 8px; font-size: 11px; }
+
+.status { font-size: 11px; color: #888; margin-top: 4px; text-align: center; }
+.coords { font-size: 10px; color: #555; margin-top: 2px; }
+#export-area { display: none; margin-top: 8px; width: 100%; max-width: 600px; }
+#export-area textarea {
+  width: 100%; height: 200px; background: #111; color: #0f0; border: 1px solid #0f3460;
+  border-radius: 4px; padding: 6px; font-size: 11px; font-family: monospace;
+  resize: vertical;
+}
+#export-area button { margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>LED Grid Editor</h1>
+
+<div class="controls">
+  <label>Rows <input type="number" id="rows" value="8" min="1" max="32"></label>
+  <label>Cols <input type="number" id="cols" value="8" min="1" max="32"></label>
+  <button id="btn-resize">Resize</button>
+  <span class="sep"></span>
+  <label>Mode
+    <select id="mode-select">
+      <option value="gro">G/R/O</option>
+      <option value="rgb">RGB</option>
+    </select>
+  </label>
+  <span class="sep"></span>
+  <label>Overlay <input type="file" id="image-upload" accept="image/*"></label>
+  <label>Opacity <input type="range" id="opacity" value="40" min="0" max="100"></label>
+  <button class="secondary" id="btn-clear-overlay">Clear Overlay</button>
+  <span class="sep"></span>
+  <button id="btn-export">Export</button>
+  <button class="secondary" id="btn-clear">Clear Grid</button>
+</div>
+
+<div id="container">
+  <canvas id="canvas"></canvas>
+  <div id="color-picker">
+    <h3>Select Color</h3>
+    <div class="color-grid" id="color-grid"></div>
+    <div class="rgb-custom">
+      <span style="font-size:11px">R</span><input type="number" id="r-val" value="255" min="0" max="255">
+      <span style="font-size:11px">G</span><input type="number" id="g-val" value="0" min="0" max="255">
+      <span style="font-size:11px">B</span><input type="number" id="b-val" value="0" min="0" max="255">
+      <button id="btn-rgb-set">Set</button>
+    </div>
+  </div>
+</div>
+
+<div class="status" id="status">8x8 grid | Mode: G/R/O | Click a cell</div>
+<div class="coords" id="coords"></div>
+
+<div id="export-area">
+  <label style="font-size:11px">Name <input type="text" id="export-name" value="my_image" style="width:120px;padding:2px 4px;background:#111;border:1px solid #0f3460;color:#eee;border-radius:3px;font-size:11px"></label>
+  <button id="btn-copy">Copy</button>
+  <textarea id="export-output" readonly></textarea>
+</div>
+
+<script>
+const GRO_CYCLE = ['OFF', 'GREEN_HIGH', 'RED_HIGH', 'AMBER_HIGH'];
+const COLOR_DEFS = {
+  OFF: { css: '#111', label: 'OFF' },
+  RED_LOW: { css: '#4a0000', cls: 'red', label: 'R LOW' },
+  RED_MED: { css: '#8b0000', cls: 'red', label: 'R MED' },
+  RED_HIGH: { css: '#ff0000', cls: 'red', label: 'R HI' },
+  GREEN_LOW: { css: '#003300', cls: 'green', label: 'G LOW' },
+  GREEN_MED: { css: '#006600', cls: 'green', label: 'G MED' },
+  GREEN_HIGH: { css: '#00ff00', cls: 'green', label: 'G HI' },
+  AMBER_LOW: { css: '#332200', cls: 'amber', label: 'A LOW' },
+  AMBER_MED: { css: '#664400', cls: 'amber', label: 'A MED' },
+  AMBER_HIGH: { css: '#ffaa00', cls: 'amber', label: 'A HI' },
+  ORANGE_LOW: { css: '#331100', cls: 'orange', label: 'O LOW' },
+  ORANGE_MED: { css: '#663300', cls: 'orange', label: 'O MED' },
+  ORANGE_HIGH: { css: '#ff6600', cls: 'orange', label: 'O HI' },
+  YELLOW_LOW: { css: '#333300', cls: 'yellow', label: 'Y LOW' },
+  YELLOW_MED: { css: '#666600', cls: 'yellow', label: 'Y MED' },
+  YELLOW_HIGH: { css: '#ffff00', cls: 'yellow', label: 'Y HI' },
+  WHITE_LOW: { css: '#333', cls: 'white', label: 'W LOW' },
+  WHITE_MED: { css: '#666', cls: 'white', label: 'W MED' },
+  WHITE_HIGH: { css: '#fff', cls: 'white', label: 'W HI' },
+  BLUE_LOW: { css: '#000033', cls: 'blue', label: 'B LOW' },
+  BLUE_MED: { css: '#000099', cls: 'blue', label: 'B MED' },
+  BLUE_HIGH: { css: '#0000ff', cls: 'blue', label: 'B HI' },
+  PURPLE_LOW: { css: '#1a0033', cls: 'purple', label: 'P LOW' },
+  PURPLE_MED: { css: '#4a0088', cls: 'purple', label: 'P MED' },
+  PURPLE_HIGH: { css: '#9900ff', cls: 'purple', label: 'P HI' },
+  CYAN_LOW: { css: '#003333', cls: 'cyan', label: 'C LOW' },
+  CYAN_MED: { css: '#006666', cls: 'cyan', label: 'C MED' },
+  CYAN_HIGH: { css: '#00ffff', cls: 'cyan', label: 'C HI' },
+};
+
+const COLOR_ORDER = [
+  'OFF', 'RED_LOW', 'RED_MED', 'RED_HIGH',
+  'GREEN_LOW', 'GREEN_MED', 'GREEN_HIGH',
+  'AMBER_LOW', 'AMBER_MED', 'AMBER_HIGH',
+  'ORANGE_LOW', 'ORANGE_MED', 'ORANGE_HIGH',
+  'YELLOW_LOW', 'YELLOW_MED', 'YELLOW_HIGH',
+  'BLUE_LOW', 'BLUE_MED', 'BLUE_HIGH',
+  'PURPLE_LOW', 'PURPLE_MED', 'PURPLE_HIGH',
+  'CYAN_LOW', 'CYAN_MED', 'CYAN_HIGH',
+  'WHITE_LOW', 'WHITE_MED', 'WHITE_HIGH',
+];
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('container');
+const colorPicker = document.getElementById('color-picker');
+const colorGrid = document.getElementById('color-grid');
+const exportArea = document.getElementById('export-area');
+const statusEl = document.getElementById('status');
+const coordsEl = document.getElementById('coords');
+
+let rows = 8, cols = 8, cellSize = 48, mode = 'gro';
+let grid = {}; // "x,y" -> colorName
+let overlayImage = null;
+let pickerTarget = null;
+
+const ACTIVE_BORDER = 3;
+const GROUND_COLOR = '#0a0a14';
+
+function initGrid(r, c) {
+  const newGrid = {};
+  for (let y = 0; y < r; y++) {
+    for (let x = 0; x < c; x++) {
+      const key = `${x},${y}`;
+      newGrid[key] = grid[key] || 'OFF';
+    }
+  }
+  grid = newGrid;
+}
+
+function resize() {
+  const maxW = Math.min(window.innerWidth - 40, 800);
+  const maxH = window.innerHeight - 200;
+  cellSize = Math.max(16, Math.min(64, Math.floor(Math.min(maxW / cols, maxH / rows))));
+  canvas.width = cols * cellSize;
+  canvas.height = rows * cellSize;
+  container.style.width = canvas.width + 'px';
+  container.style.height = canvas.height + 'px';
+  draw();
+}
+
+function draw() {
+  ctx.fillStyle = GROUND_COLOR;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const color = grid[`${x},${y}`] || 'OFF';
+      const def = COLOR_DEFS[color] || COLOR_DEFS.OFF;
+      ctx.fillStyle = def.css;
+      ctx.fillRect(x * cellSize + ACTIVE_BORDER, y * cellSize + ACTIVE_BORDER,
+                   cellSize - ACTIVE_BORDER * 2, cellSize - ACTIVE_BORDER * 2);
+    }
+  }
+
+  if (overlayImage) {
+    ctx.globalAlpha = document.getElementById('opacity').value / 100;
+    ctx.drawImage(overlayImage, 0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.strokeStyle = '#1a1a3a';
+  ctx.lineWidth = 0.5;
+  for (let y = 0; y <= rows; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * cellSize);
+    ctx.lineTo(cols * cellSize, y * cellSize);
+    ctx.stroke();
+  }
+  for (let x = 0; x <= cols; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * cellSize, 0);
+    ctx.lineTo(x * cellSize, rows * cellSize);
+    ctx.stroke();
+  }
+}
+
+function cellFromEvent(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+  const x = Math.floor(mx / cellSize);
+  const y = Math.floor(my / cellSize);
+  if (x < 0 || x >= cols || y < 0 || y >= rows) return null;
+  return { x, y };
+}
+
+function cycleGRO(x, y) {
+  const key = `${x},${y}`;
+  const current = grid[key] || 'OFF';
+  const idx = GRO_CYCLE.indexOf(current);
+  const next = GRO_CYCLE[(idx + 1) % GRO_CYCLE.length];
+  grid[key] = next;
+  draw();
+  updateStatus();
+}
+
+function buildColorPicker() {
+  colorGrid.innerHTML = '';
+  for (const name of COLOR_ORDER) {
+    const def = COLOR_DEFS[name];
+    const btn = document.createElement('button');
+    btn.className = `color-btn ${def.cls}`;
+    btn.textContent = def.label;
+    btn.addEventListener('click', () => {
+      if (pickerTarget) {
+        grid[pickerTarget] = name;
+        pickerTarget = null;
+      }
+      colorPicker.style.display = 'none';
+      draw();
+      updateStatus();
+    });
+    colorGrid.appendChild(btn);
+  }
+}
+
+function showPicker(x, y, e) {
+  pickerTarget = `${x},${y}`;
+  const rect = canvas.getBoundingClientRect();
+  let px = e.clientX - rect.left + 10;
+  let py = e.clientY - rect.top + 10;
+  if (px + 220 > canvas.width) px = canvas.width - 230;
+  if (py + 300 > canvas.height) py = canvas.height - 310;
+  colorPicker.style.left = px + 'px';
+  colorPicker.style.top = py + 'px';
+  colorPicker.style.display = 'block';
+}
+
+canvas.addEventListener('click', (e) => {
+  const cell = cellFromEvent(e);
+  if (!cell) return;
+  if (mode === 'gro') {
+    cycleGRO(cell.x, cell.y);
+  } else {
+    showPicker(cell.x, cell.y, e);
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const cell = cellFromEvent(e);
+  coordsEl.textContent = cell ? `[${cell.x}, ${cell.y}]  ${grid[`${cell.x},${cell.y}`] || 'OFF'}` : '';
+});
+
+canvas.addEventListener('mouseleave', () => {
+  coordsEl.textContent = '';
+});
+
+document.addEventListener('click', (e) => {
+  if (!colorPicker.contains(e.target) && e.target !== canvas) {
+    colorPicker.style.display = 'none';
+    pickerTarget = null;
+  }
+});
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  for (const key of Object.keys(grid)) grid[key] = 'OFF';
+  draw();
+  updateStatus();
+});
+
+document.getElementById('btn-resize').addEventListener('click', () => {
+  rows = parseInt(document.getElementById('rows').value) || 8;
+  cols = parseInt(document.getElementById('cols').value) || 8;
+  rows = Math.max(1, Math.min(32, rows));
+  cols = Math.max(1, Math.min(32, cols));
+  document.getElementById('rows').value = rows;
+  document.getElementById('cols').value = cols;
+  initGrid(rows, cols);
+  resize();
+  updateStatus();
+});
+
+document.getElementById('mode-select').addEventListener('change', (e) => {
+  mode = e.target.value;
+  updateStatus();
+});
+
+document.getElementById('opacity').addEventListener('input', () => draw());
+
+document.getElementById('image-upload').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      overlayImage = img;
+      draw();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+document.getElementById('btn-clear-overlay').addEventListener('click', () => {
+  overlayImage = null;
+  document.getElementById('image-upload').value = '';
+  draw();
+});
+
+document.getElementById('btn-export').addEventListener('click', () => {
+  const name = document.getElementById('export-name').value || 'my_image';
+  const lines = [];
+  for (let y = 0; y < rows; y++) {
+    const row = [];
+    for (let x = 0; x < cols; x++) {
+      row.push(`'${grid[`${x},${y}`] || 'OFF'}'`);
+    }
+    lines.push(`    - [${row.join(', ')}]`);
+  }
+  const yaml = `  - name: ${name}\n    grid:\n${lines.join('\n')}`;
+  document.getElementById('export-output').value = yaml;
+  exportArea.style.display = 'block';
+});
+
+document.getElementById('btn-copy').addEventListener('click', () => {
+  const ta = document.getElementById('export-output');
+  ta.select();
+  navigator.clipboard.writeText(ta.value).then(() => {
+    const btn = document.getElementById('btn-copy');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+  });
+});
+
+document.getElementById('btn-rgb-set').addEventListener('click', () => {
+  if (!pickerTarget) return;
+  const r = parseInt(document.getElementById('r-val').value) || 0;
+  const g = parseInt(document.getElementById('g-val').value) || 0;
+  const b = parseInt(document.getElementById('b-val').value) || 0;
+  const hex = `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+  const name = `RGB(${r},${g},${b})`;
+  COLOR_DEFS[name] = { css: hex, cls: '', label: name };
+  grid[pickerTarget] = name;
+  pickerTarget = null;
+  colorPicker.style.display = 'none';
+  draw();
+  updateStatus();
+});
+
+function updateStatus() {
+  statusEl.textContent = `${cols}x${rows} grid | Mode: ${mode.toUpperCase()} | Click a cell${mode === 'gro' ? ' to cycle colors' : ' to pick color'}`;
+}
+
+window.addEventListener('resize', resize);
+
+initGrid(rows, cols);
+buildColorPicker();
+resize();
+updateStatus();
+</script>
+</body>
+</html>
