@@ -76,7 +76,7 @@ class SettingsScreen(ModalScreen):
         }
         #settings-dialog {
             width: 58;
-            height: 22;
+            height: 32;
             border: thick $primary;
             background: $surface;
             padding: 1 2;
@@ -119,30 +119,35 @@ class SettingsScreen(ModalScreen):
         fallback = clock.get("fallback", "Internal")
         bpm = clock.get("internal_bpm", 120)
         idle = self._config.get("ui", {}).get("idle_timeout_ms", 30000)
+        downbeat = self._config.get("ui", {}).get("downbeat_flash", "tempo_led")
+        downbeat_color = self._config.get("ui", {}).get("downbeat_color", "GREEN_HIGH")
 
         pref_options = [(s, s) for s in sources]
         fallback_options = [(s, s) for s in sources]
+        downbeat_options = [("Tempo LED only", "tempo_led"), ("4 corners flash", "4 corners")]
+        downbeat_color_opts = [(c, c) for c in ["GREEN_HIGH", "RED_HIGH", "AMBER_HIGH", "GREEN_MED", "RED_MED", "AMBER_MED"]]
 
         with Container(id="settings-dialog"):
             yield Static("⚙ Settings — nova-script")
             yield Static("")
+
+            yield Static("— Clock —")
             with Horizontal(classes="setting-row"):
                 yield Static("Preferred source:", classes="setting-label")
-                yield Select(
-                    pref_options,
-                    prompt=preferred,
-                    value=preferred,
-                    id="preferred-select",
-                )
+                yield Select(pref_options, prompt=preferred, value=preferred, id="preferred-select")
             with Horizontal(classes="setting-row"):
                 yield Static("Fallback source:", classes="setting-label")
-                yield Select(
-                    fallback_options,
-                    prompt=fallback,
-                    value=fallback,
-                    id="fallback-select",
-                )
+                yield Select(fallback_options, prompt=fallback, value=fallback, id="fallback-select")
             yield Static(f"  Internal BPM: {bpm}   |   Idle timeout: {idle // 1000}s")
+            yield Static("")
+
+            yield Static("— Visual —")
+            with Horizontal(classes="setting-row"):
+                yield Static("Downbeat flash:", classes="setting-label")
+                yield Select(downbeat_options, prompt=downbeat, value=downbeat, id="downbeat-select")
+            with Horizontal(classes="setting-row"):
+                yield Static("Downbeat color:", classes="setting-label")
+                yield Select(downbeat_color_opts, prompt=downbeat_color, value=downbeat_color, id="downbeat-color-select")
             yield Static(f"  Current profile: {self._profile_name}")
             yield Static("")
             with Horizontal():
@@ -153,12 +158,17 @@ class SettingsScreen(ModalScreen):
         if event.button.id == "close-settings":
             self.dismiss()
         elif event.button.id == "save-settings":
-            preferred = self.query_one("#preferred-select", Select).value
-            fallback = self.query_one("#fallback-select", Select).value
-            if preferred:
-                self._config.setdefault("midi", {}).setdefault("clock", {})["preferred"] = str(preferred)
-            if fallback:
-                self._config.setdefault("midi", {}).setdefault("clock", {})["fallback"] = str(fallback)
+            ui = self._config.setdefault("ui", {})
+            midi = self._config.setdefault("midi", {}).setdefault("clock", {})
+
+            p = self.query_one("#preferred-select", Select).value
+            f = self.query_one("#fallback-select", Select).value
+            d = self.query_one("#downbeat-select", Select).value
+            dc = self.query_one("#downbeat-color-select", Select).value
+            if p: midi["preferred"] = str(p)
+            if f: midi["fallback"] = str(f)
+            if d: ui["downbeat_flash"] = str(d)
+            if dc: ui["downbeat_color"] = str(dc)
             self.dismiss(self._config)
 
 

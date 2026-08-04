@@ -47,6 +47,9 @@ class Engine:
         self._idle_timeout_ms: int = 30000
         self._beat_led_on: bool = False
         self._beat_led_off_time: float = 0.0
+        self._press_feedback: dict[tuple[int, int], float] = {}
+        self._downbeat_count: int = 0
+        self._last_downbeat: int = -1
         self._message_mode: Optional[MessageMode] = None
 
     def set_tui_queue(self, queue):
@@ -225,6 +228,11 @@ class Engine:
             self.controllers[device_name].on_disconnect()
 
     def _on_grid_event(self, event):
+        if event.pressed:
+            lp = self.controllers.get("Launchpad Mini")
+            if lp:
+                lp.set_grid_color(event.x, event.y, LogicalColor.AMBER_HIGH)
+                self._press_feedback[(event.x, event.y)] = time.monotonic() + 0.12
         if self.overlay:
             if self.overlay.handle_grid_event(event):
                 return
@@ -275,6 +283,28 @@ class Engine:
         self._beat_led_off_time = time.monotonic() + 0.08
         self._set_home_led()
 
+        if beat_count % 4 == 1 and self._last_downbeat != beat_count:
+            self._last_downbeat = beat_count
+            downbeat_mode = self.config.get("ui", {}).get("downbeat_flash", "tempo_led")
+            if downbeat_mode == "4 corners":
+                self._flash_downbeat_corners()
+            elif downbeat_mode == "tempo_led":
+                pass
+
+    def _flash_downbeat_corners(self):
+        lp = self.controllers.get("Launchpad Mini")
+        if lp is None:
+            return
+        color_name = self.config.get("ui", {}).get("downbeat_color", "GREEN_HIGH")
+        try:
+            color = LogicalColor[color_name]
+        except KeyError:
+            color = LogicalColor.GREEN_HIGH
+        corners = [(0, 0), (7, 0), (0, 7), (7, 7)]
+        for x, y in corners:
+            lp.set_grid_color(x, y, color)
+        self._press_feedback[(-1, 0)] = time.monotonic() + 0.15
+
     def _on_osc_message(self, msg: dict):
         msg_type = msg.get("type")
         logger.debug(f"OSC received: {msg_type}")
@@ -302,6 +332,8 @@ class Engine:
         if self._clock:
             self._clock.tick(now)
 
+        self._tick_press_feedback(now)
+
         if self._beat_led_on and now >= self._beat_led_off_time:
             self._beat_led_on = False
             self._set_home_led()
@@ -312,11 +344,21 @@ class Engine:
                 self.mode_manager.switch_to("menu")
 
         if self.overlay:
-            self.overlay.tick(delta_ms)
+            self.overlay.tick(delta_ms, now=now)
             if not self.overlay.is_overlay_active and self.mode_manager:
                 self.mode_manager.tick(delta_ms)
         elif self.mode_manager:
             self.mode_manager.tick(delta_ms)
+
+    def _tick_press_feedback(self, now: float):
+        expired = [k for k, v in self._press_feedback.items() if now >= v]
+        for key in expired:
+            del self._press_feedback[key]
+            if key == (-1, 0):
+                if self.mode_manager and self.mode_manager.active_mode:
+                    self.mode_manager.active_mode.enter()
+            elif self.mode_manager and self.mode_manager.active_mode:
+                self.mode_manager.active_mode.enter()
 
     async def _tui_broadcast_loop(self):
         while self._running:

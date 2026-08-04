@@ -20,6 +20,8 @@ ui:
   idle_timeout_ms: 30000
   long_press_ms: 500
   message_scroll_speed_ms: 150
+  downbeat_flash: "tempo_led"
+  downbeat_color: "GREEN_HIGH"
 
 modes:
   menu:
