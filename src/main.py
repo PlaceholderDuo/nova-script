@@ -185,6 +185,11 @@ def main():
         cmd_virtualizer_start()
         return
 
+    if args[0].startswith("virt") and args[0] != "virtualizer":
+        print(f"Unknown command '{args[0]}'. Did you mean 'virtualizer'?")
+        print("Usage: nova-script virtualizer [stop]")
+        sys.exit(1)
+
     if args[0] == "list":
         cmd_list()
         return
