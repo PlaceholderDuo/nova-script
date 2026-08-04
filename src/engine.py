@@ -383,6 +383,11 @@ class Engine:
             pm = self.mode_manager._modes.get("performance")
             if pm and hasattr(pm, "set_bpm"):
                 pm.set_bpm(self._clock.bpm)
+                ui = self.config.get("ui", {})
+                pm.set_hints_config(
+                    ui.get("hints_enabled", True),
+                    ui.get("hints_color", "AMBER_HIGH"),
+                )
 
     def _tick_press_feedback(self, now: float):
         expired = [k for k, v in self._press_feedback.items() if now >= v]

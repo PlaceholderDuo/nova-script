@@ -74,9 +74,16 @@ class PerformanceMode(Mode):
         self._tuner_exit_start: float = 0.0
         self._tuner_letter_idx: int = 0
         self._tuner_letters = ["T", "N", "R"]
+        self._hints_enabled: bool = True
+        self._hint_letter: str = ""
+        self._hint_expiry: float = 0.0
+        self._hint_color_state: LogicalColor = LogicalColor.AMBER_HIGH
 
     def set_bpm(self, bpm: float):
         self._bpm = bpm
+
+    def set_hints_config(self, enabled: bool, _color: str = ""):
+        self._hints_enabled = enabled
 
     def enter(self):
         self._active_track = 0
@@ -142,6 +149,11 @@ class PerformanceMode(Mode):
         enabled = self._fx_enabled[track_idx][fx_idx]
         self._send_osc(fx["osc"], 0 if enabled else 1)
 
+        if self._hints_enabled:
+            self._hint_letter = fx["name"][0]
+            self._hint_expiry = time.monotonic() + 0.3
+            self._hint_color_state = LogicalColor.GREEN_HIGH if enabled else LogicalColor.RED_HIGH
+
     def _send_osc(self, addr: str, value: int):
         if self.osc_bridge:
             self.osc_bridge.send(addr, value)
@@ -153,6 +165,11 @@ class PerformanceMode(Mode):
 
     def _render(self):
         self.clear()
+
+        if self._hint_letter and time.monotonic() < self._hint_expiry:
+            self._render_letter(self._hint_letter, self._hint_color_state)
+            self.commit()
+            return
 
         if self._tuner_state in ("intro", "active"):
             self._render_tuner_state()

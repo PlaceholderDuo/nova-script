@@ -121,6 +121,7 @@ class SettingsScreen(ModalScreen):
         idle = self._config.get("ui", {}).get("idle_timeout_ms", 30000)
         downbeat = self._config.get("ui", {}).get("downbeat_flash", "tempo_led")
         downbeat_color = self._config.get("ui", {}).get("downbeat_color", "GREEN_HIGH")
+        hints_on = self._config.get("ui", {}).get("hints_enabled", True)
 
         pref_options = [(s, s) for s in sources]
         fallback_options = [(s, s) for s in sources]
@@ -130,6 +131,7 @@ class SettingsScreen(ModalScreen):
             ("Disable", "disable"),
         ]
         downbeat_color_opts = [(c, c) for c in ["GREEN_HIGH", "RED_HIGH", "AMBER_HIGH", "GREEN_MED", "RED_MED", "AMBER_MED"]]
+        hints_options = [("ON", True), ("OFF", False)]
 
         with Container(id="settings-dialog"):
             yield Static("⚙ Settings — nova-script")
@@ -152,6 +154,9 @@ class SettingsScreen(ModalScreen):
             with Horizontal(classes="setting-row"):
                 yield Static("Downbeat color:", classes="setting-label")
                 yield Select(downbeat_color_opts, prompt=downbeat_color, value=downbeat_color, id="downbeat-color-select")
+            with Horizontal(classes="setting-row"):
+                yield Static("Visual hints:", classes="setting-label")
+                yield Select(hints_options, prompt="ON" if hints_on else "OFF", value=hints_on, id="hints-select")
             yield Static(f"  Current profile: {self._profile_name}")
             yield Static("")
             with Horizontal():
@@ -174,6 +179,8 @@ class SettingsScreen(ModalScreen):
             if f: midi["fallback"] = str(f)
             if d: ui["downbeat_flash"] = str(d)
             if dc: ui["downbeat_color"] = str(dc)
+            h = self.query_one("#hints-select", Select).value
+            if h is not None: ui["hints_enabled"] = bool(h) if str(h) != "False" else False
             self.dismiss(self._config)
         elif event.button.id == "open-mixer":
             self.app.push_screen(MixerSettingsScreen(self._config))

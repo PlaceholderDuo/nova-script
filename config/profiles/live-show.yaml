@@ -22,6 +22,7 @@ ui:
   message_scroll_speed_ms: 150
   downbeat_flash: "tempo_led"
   downbeat_color: "GREEN_HIGH"
+  hints_enabled: true
 
 modes:
   menu:
