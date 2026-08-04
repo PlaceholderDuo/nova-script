@@ -126,16 +126,17 @@ class ImageStore:
                 self.last_image = data.get("last_image", 0)
                 logger.info(f"Loaded {len(self.images)} images from {self._path}")
             else:
-                self._init_defaults()
+                self._init_defaults(save_to_disk=True)
         except Exception as e:
-            logger.warning(f"Failed to load images: {e}. Using defaults.")
-            self._init_defaults()
+            logger.warning(f"Failed to load images: {e}. Using defaults (disk unchanged).")
+            self._init_defaults(save_to_disk=False)
 
-    def _init_defaults(self):
+    def _init_defaults(self, save_to_disk: bool = True):
         self.images = dict(DEFAULT_IMAGES)
         self.quick_slots = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7}
         self.last_image = 0
-        self.save()
+        if save_to_disk:
+            self.save()
 
     def save(self):
         try:
