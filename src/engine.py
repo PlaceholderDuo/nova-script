@@ -96,6 +96,7 @@ class Engine:
             if not self._startup_wave.tick(now=sim_time):
                 break
             sim_time += 0.05
+            await asyncio.sleep(0.03)
 
         self._running = True
         self._last_tick = time.monotonic()

@@ -85,6 +85,7 @@ class OverlayManager:
 
     def trigger_screensaver(self):
         self._enter_overlay(OverlayPriority.SCREENSAVER)
+        self._screensaver_last_cycle = time.monotonic()
         self._render_screensaver_image()
 
     def trigger_fireworks(self):
@@ -244,9 +245,10 @@ class OverlayManager:
         if img is None:
             return
         for y, row in enumerate(img):
+            display_y = 7 - y
             for x, color in enumerate(row):
                 dimmed = self.dim_color(color, self._brightness_pct)
-                self.grid.set_cell(x, y, dimmed)
+                self.grid.set_cell(x, display_y, dimmed)
         self._commit()
 
     # ── Private: helpers ──────────────────────────────

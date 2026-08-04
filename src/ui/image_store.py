@@ -178,9 +178,10 @@ class ImageStore:
             return False
         target_grid.clear()
         for y, row in enumerate(img):
+            display_y = 7 - y
             for x, color in enumerate(row):
-                if 0 <= x < 8 and 0 <= y < 8:
-                    target_grid.set_cell(x, y, color)
+                if 0 <= x < 8 and 0 <= display_y < 8:
+                    target_grid.set_cell(x, display_y, color)
         return True
 
 
