@@ -1494,3 +1494,32 @@ Settings screen: Select with all 3 options, saves to profile.
 - `src/engine.py` — Config pass-through + BPM sync
 - `config/profiles/live-show.yaml` — Performance + mixer channel aliases
 - `BUILD_LOG.md` — This entry
+
+---
+
+## Entry #18 — 2026-08-04 — Page Navigation, Performance Page 2, Pad Manual
+
+### Changes Made
+
+- **Page System** (`src/ui/mode.py`): Right column buttons (A-H) as page indicators.
+  `render_pages()` lights amber for each available page, green for current.
+  `_page` and `_num_pages` fields on Mode base class. `clear_pages()` helper.
+  Bottom button H = page 1, G = page 2, etc. All modes get this for free.
+
+- **Performance Page 2** (`src/ui/modes/performance.py`): 2-page layout.
+  Page 1: mute + core FX (unchanged). Page 2: Extended FX (placeholder).
+  Right column navigation: H=page1, G=page2. Press to switch pages.
+  `_render_extended_fx()` shows amber placeholder block.
+
+- **Pad Navigation Manual** (`docs/PAD-NAVIGATION-MANUAL.md`):
+  Complete guide to every button, mode, and interaction. Covers:
+  Universal controls, mode shortcuts, overlay rules, Menu mode layout,
+  Performance mode (both pages), Clip Launcher (including edit mode),
+  Sequencer, Mixer, BPM clock, visual hints, screensaver, fireworks,
+  HUD, TUI companion, and settings reference.
+
+### Files Changed
+- `src/ui/mode.py` — Page system (render_pages, clear_pages, _page, _num_pages)
+- `src/ui/modes/performance.py` — 2-page layout, page navigation, Extended FX placeholder
+- `docs/PAD-NAVIGATION-MANUAL.md` — New: complete pad navigation manual
+- `BUILD_LOG.md` — This entry

@@ -78,6 +78,8 @@ class PerformanceMode(Mode):
         self._hint_letter: str = ""
         self._hint_expiry: float = 0.0
         self._hint_color_state: LogicalColor = LogicalColor.AMBER_HIGH
+        self._num_pages = 2
+        self._page = 0
 
     def set_bpm(self, bpm: float):
         self._bpm = bpm
@@ -122,10 +124,16 @@ class PerformanceMode(Mode):
                 self._render()
 
         elif event.control_id >= 100:
-            fx_idx = event.control_id - 100
-            if 0 <= fx_idx < 5:
-                self._toggle_fx(self._active_track, fx_idx)
+            page_idx = event.control_id - 100
+            requested_page = 7 - page_idx
+            if 0 <= requested_page < self._num_pages:
+                self._page = requested_page
                 self._render()
+            elif self._page == 0:
+                fx_idx = page_idx
+                if 0 <= fx_idx < 5:
+                    self._toggle_fx(self._active_track, fx_idx)
+                    self._render()
 
     def _toggle_mute(self, track_idx: int):
         track = self._tracks[track_idx]
@@ -168,16 +176,25 @@ class PerformanceMode(Mode):
 
         if self._hint_letter and time.monotonic() < self._hint_expiry:
             self._render_letter(self._hint_letter, self._hint_color_state)
+            self.render_pages()
             self.commit()
             return
 
         if self._tuner_state in ("intro", "active"):
             self._render_tuner_state()
+            self.render_pages()
             self.commit()
             return
 
         if self._tuner_state == "exit":
             self._render_tuner_exit()
+            self.render_pages()
+            self.commit()
+            return
+
+        if self._page == 1:
+            self._render_extended_fx()
+            self.render_pages()
             self.commit()
             return
 
@@ -213,7 +230,14 @@ class PerformanceMode(Mode):
                 if 0 <= display_y < 7:
                     self.grid.set_cell(col, display_y, color)
 
+        self.render_pages()
         self.commit()
+
+    def _render_extended_fx(self):
+        self.grid.set_cell(3, 4, LogicalColor.AMBER_HIGH)
+        self.grid.set_cell(4, 4, LogicalColor.AMBER_HIGH)
+        self.grid.set_cell(3, 3, LogicalColor.AMBER_HIGH)
+        self.grid.set_cell(4, 3, LogicalColor.AMBER_HIGH)
 
     def _render_tuner(self):
         for y in range(8):

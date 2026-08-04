@@ -15,6 +15,25 @@ class Mode(ABC):
         self._pending_y: int | None = None
         self._pending_time: float = 0.0
         self._last_action_time: float = 0.0
+        self._page: int = 0
+        self._num_pages: int = 1
+
+    def render_pages(self):
+        """Light right-column buttons as page indicators.
+        Amber = total pages, Green = current page.
+        Bottom button (H) = page 1, G = page 2, etc.
+        Call this in your _render() method."""
+        for i in range(8):
+            idx = 7 - i
+            if i < self._num_pages:
+                color = LogicalColor.GREEN_HIGH if i == self._page else LogicalColor.AMBER_LOW
+                self.controller.send_right_column_led(idx, color)
+            else:
+                self.controller.send_right_column_led(idx, LogicalColor.OFF)
+
+    def clear_pages(self):
+        for i in range(8):
+            self.controller.send_right_column_led(i, LogicalColor.OFF)
 
     @abstractmethod
     def enter(self):
