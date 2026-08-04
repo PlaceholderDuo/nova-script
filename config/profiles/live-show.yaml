@@ -16,7 +16,7 @@ osc:
   reaper_host: "127.0.0.1"
 
 ui:
-  default_mode: menu
+  default_mode: performance
   idle_timeout_ms: 30000
   long_press_ms: 500
   message_scroll_speed_ms: 150

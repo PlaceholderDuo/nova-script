@@ -221,7 +221,7 @@ class Engine:
         )
         self.mode_manager.register(clip_launcher)
 
-        default_mode = self.config.get("ui", {}).get("default_mode", "menu")
+        default_mode = self.config.get("ui", {}).get("default_mode", "performance")
         self.mode_manager.switch_to(default_mode)
 
     def _on_device_connect(self, device_name: str):
@@ -254,7 +254,7 @@ class Engine:
             if result == "consumed":
                 return
             if result == "home":
-                self.mode_manager.switch_to("menu")
+                self.mode_manager.switch_to("performance")
                 return
             if result == "screensaver":
                 self.overlay.trigger_screensaver()
@@ -295,7 +295,7 @@ class Engine:
         if color_override is not None:
             lp.send_top_row_led(0, color_override)
             return
-        at_home = self.mode_manager and self.mode_manager.active_mode_name == "menu"
+        at_home = self.mode_manager and self.mode_manager.active_mode_name == "performance"
         color = LogicalColor.AMBER_HIGH if at_home else LogicalColor.GREEN_HIGH
         lp.send_top_row_led(0, color)
 
@@ -370,7 +370,7 @@ class Engine:
         if self._combo:
             result = self._combo.tick()
             if result == "home":
-                self.mode_manager.switch_to("menu")
+                self.mode_manager.switch_to("performance")
 
         if self.overlay:
             self.overlay.tick(delta_ms, now=now)
