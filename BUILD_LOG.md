@@ -1523,3 +1523,158 @@ Settings screen: Select with all 3 options, saves to profile.
 - `src/ui/modes/performance.py` — 2-page layout, page navigation, Extended FX placeholder
 - `docs/PAD-NAVIGATION-MANUAL.md` — New: complete pad navigation manual
 - `BUILD_LOG.md` — This entry
+
+## Entry #19 — 2026-08-04 — LED Grid Editor Tool
+
+### Purpose
+Visual editor for creating custom Launchpad grid images. Replaces hand-editing YAML grids in `config/screensaver-images.yaml`. Designed for the nova-script screensaver/fireworks image system.
+
+### Features
+- **Grid sizing**: 1x1 to 32x32, resizable via input controls
+- **G/R/O mode**: Click cycles OFF -> GREEN_HIGH -> RED_HIGH -> AMBER_HIGH. Fast, one-click editing for Launchpad MK1's native color palette
+- **RGB mode**: Click opens color picker with all 28 LogicalColor values (9 colors x 3 brightness + OFF). Custom RGB input for arbitrary hex colors
+- **Image overlay**: Upload a reference image (PNG/JPG/etc) that overlays the grid with adjustable opacity. Used for tracing/templating
+- **Export**: Generates YAML in `screensaver-images.yaml` format (`'OFF'`, `RED_HIGH`, `AMBER_MED`, etc.). "Copy" button for clipboard
+- **Mouse hover**: Shows cell coordinates and current color value
+- **Clear grid**: Resets all cells to OFF
+
+### Output Format
+Matches `config/screensaver-images.yaml`:
+```yaml
+- name: my_image
+  grid:
+  - ['OFF', 'RED_HIGH', 'GREEN_LOW', ...]
+  - ['AMBER_HIGH', 'OFF', 'OFF', ...]
+  - ...
+```
+
+### Files
+| File | Description |
+|------|-------------|
+| `tools/led-grid-editor.html` | Self-contained HTML/CSS/JS tool. No dependencies. Open directly in browser |
+
+### How to Use
+1. Open `tools/led-grid-editor.html` in any browser
+2. Set rows/cols to match your Launchpad (8x8 for MK1)
+3. Upload reference image (optional), adjust opacity slider
+4. Click cells to set colors (G/R/O mode for quick cycling, RGB mode for full palette)
+5. Click "Export" -> name your image -> "Copy" to clipboard
+6. Paste into `config/screensaver-images.yaml` under the `images:` key
+
+### Color Reference (MK1 Launchpad)
+| YAML Value | Hardware | Visual |
+|------------|----------|--------|
+| `OFF` | LED off | #111 |
+| `RED_LOW/MED/HIGH` | Red LED levels | #4a0000 / #8b0000 / #ff0000 |
+| `GREEN_LOW/MED/HIGH` | Green LED levels | #003300 / #006600 / #00ff00 |
+| `AMBER_LOW/MED/HIGH` | Amber (red+green) | #332200 / #664400 / #ffaa00 |
+
+## Entry #20 — 2026-08-04 — Novation Hardware Virtualizer
+
+### Purpose
+Virtual Novation controller simulator for nova-script development without physical hardware. Creates virtual MIDI ports that nova-script discovers and connects to as if they were real USB devices. Web-based visual UI shows real-time LED state and allows clicking pads to simulate button presses.
+
+### Architecture
+```
+Browser (HTML/JS) ←WebSocket→ Python Backend ←Virtual MIDI→ nova-script
+```
+- **Backend** (`tools/novation-virtualizer.py`): Creates virtual MIDI ports via `rtmidi`, bridges MIDI ↔ WebSocket, simulates hardware behavior
+- **Frontend** (`tools/novation-virtualizer.html`): Realistic device rendering with LED glow effects, controller type selector, interactive pads/knobs/faders/transport
+- **Launcher** (`tools/run-virtualizer.sh`): One-command startup for backend + browser
+
+### Supported Controllers
+| Device | Grid | Protocol | Colors | Port Name |
+|--------|------|----------|--------|-----------|
+| Launchpad MK1 | 8×8 | MK1 velocity | G/R/O bicolor | Launchpad MK1 |
+| Launchpad Mini MK1 | 8×8 | MK1 velocity | G/R/O bicolor | Launchpad Mini |
+| Launchpad MK2 | 8×8 | MK1 velocity | RGB (sim) | Launchpad MK2 |
+| Launchpad Mini MK2 | 8×8 | MK1 velocity | RGB (sim) | Launchpad Mini MK2 |
+| Launchpad Pro MK3 | 8×8 | MK3 | RGB palette | Launchpad Pro MK3 |
+| Launchpad Mini MK3 | 8×8 | MK3 | RGB palette | Launchpad Mini MK3 |
+| Launchkey 49 MK2 | 8×2 | Ch16 palette | RGB palette | Launchkey 49 |
+
+### Visual Design
+- **Charcoal theme**: #1a1a1a background, #222 device shell, #3a3a3a OFF pads (visible pad even when unlit)
+- **LED-accurate colors**: Colors converted from sRGB to approximate real RGB LED gamut. MK1 red LEDs (~630nm) appear as deep red-orange `rgb(255,20,0)`. Green LEDs (~522nm) as vivid green `rgb(0,255,30)`. Amber (red+green simultaneous) as warm amber `rgb(255,155,8)`. All 3 brightness levels per color
+- **LED glow**: Box-shadow spread proportional to brightness level: HIGH=14px, MED=8px, LOW=4px, OFF=none
+- **Pads click visual**: Brief brightness flash on mousedown (filter:brightness 1.6) for tactile feedback
+
+### Per-Controller Physical Layouts
+| Device | Labels |
+|--------|--------|
+| **Launchpad Mini MK1** | Top: HOME, Perf, Clip, Seq, Mixer, Page◀, Page▶, Rec — Right: A-H |
+| **Launchpad MK1** | Top: ⬆⬇⬅➡, Session, User1/2, Mixer — Right: Vol, Pan, SndA/B, Stop, Trk▶, Solo, Arm |
+| **Launchpad Mini MK3** | Top: Note, Chord, Custom, ▲▼, Scale — Extra: Session, Note, Custom, arrows, Capture, Quantise |
+| **Launchpad Pro MK3** | MK3 + Left column buttons + transport-style top row + Record/Play |
+| **Launchkey 49 MK2** | Knobs K1-8, pads 8×2, faders F1-8, master fader, 8 transport buttons (◀◀, ▶▶, ◼, ▶, ↺, ●, Tr◀, Tr▶) |
+
+### Hardware Simulation Accuracy
+- **MK1 bicolor LEDs**: OFF=0, RED=1-3, GREEN=16-48, AMBER=17-51 at 3 brightness levels. All color aliases (BLUE→GREEN, PURPLE→AMBER, etc.) rendered as physical equivalents
+- **MK1 coordinate mapping**: `note = (7-y)*16+x` — (0,0) bottom-left = note 112, (0,7) top-left = note 0
+- **Top row**: CC 104-111 (0x68-0x6F) on channel 1
+- **Right column**: Notes 8,24,40,56,72,88,104,120 on channel 1
+- **Launchkey protocol**: LED control on channel 16 (0x9F) with 128-entry palette. Extended mode pad notes 96-103,112-119. Knobs CC 21-28. Faders CC 41-48 + master CC 7. Transport CCs 102-103,112-117.
+- **Keyboard shortcuts**: Keys 1-8 = top row buttons, Shift+1-8 = right column buttons
+
+### How to Use
+1. `./tools/run-virtualizer.sh` (or `python tools/novation-virtualizer.py`)
+2. Click "Connect MIDI" in the web UI — creates virtual ports like "Launchpad Mini"
+3. Run nova-script: `python -m src.main` — it auto-discovers the virtual port
+4. Click pads in the browser → nova-script receives GridEvents
+5. nova-script sends LED updates → visualizer shows them in real time
+6. Use the dropdown to switch between controller types (reconnects ports)
+
+### MIDI Flow
+```
+User clicks pad → WebSocket → Backend sends [0x90, note, 127] via virtual MIDI out
+→ nova-script receives via midi_in → processes event → sends LED update via midi_out
+→ Backend receives [0x90, note, vel] via virtual MIDI in → maps to color → broadcasts to UI
+```
+
+### Files
+| File | Description |
+|------|-------------|
+| `tools/novation-virtualizer.py` | Python backend: virtual MIDI ports, WebSocket server, device profiles |
+| `tools/novation-virtualizer.html` | Web UI: realistic device rendering, interactive controllers |
+| `tools/run-virtualizer.sh` | Launch script: starts backend + opens browser |
+
+### Dependencies
+- `python-rtmidi>=1.5` (already in nova-script venv)
+- `websockets>=17` (added to venv via `pip install websockets`)
+
+## Entry #21 — 2026-08-04 — Virtualizer Revisions: LED Accuracy, Layouts, Offline UX
+
+### Changes from initial Entry #20
+
+**LED Color Accuracy (complete rewrite of color tables)**
+- Research-backed LED spectral approximations for all 28 LogicalColors
+- MK1 bicolor LEDs mapped to real LED wavelengths: Red ~630nm → `rgb(255,20,0)`, Green ~522nm → `rgb(0,255,30)`, Amber (dual-LED) → `rgb(255,155,8)`
+- Each color has 3 brightness levels with physically accurate scaling
+- RGB devices (MK3, Launchkey) get LED-gamut-mapped primaries (narrower than sRGB)
+- OFF pads rendered as visible grey `rgb(58,58,58)` — pad is visible even when unlit
+
+**Visual Theme**
+- Charcoal background (#1a1a1a), dark #222 device shell
+- Medium grey OFF pads so the grid is always visible
+- LED glow effects scaled to actual brightness: HIGH=14px spread, MED=8px, LOW=4px
+- Pad click feedback: instant brightness flash (filter:brightness 1.6) mimicking physical press
+
+**Per-Controller Physical Button Layouts**
+Each controller now shows accurate button labels matching the real hardware:
+- Launchpad Mini MK1: Top row labeled HOME, Perf, Clip, Seq, Mixer, Page◀, Page▶, Rec; Right col A-H
+- Launchpad MK1: Top row ⬆⬇⬅➡, Session, User 1/2, Mixer; Right col Vol, Pan, SndA/B, Stop, Trk▶, Solo, Arm
+- Launchpad Mini MK3: Front panel mode buttons (Session, Note, Custom, arrows, Capture, Quantise)
+- Launchpad Pro MK3: Left column buttons, transport top row, extra Record/Play buttons
+- Launchkey 49 MK2: Labeled knobs (K1-8), faders (F1-8 + MST), transport (◀◀, ▶▶, ◼, ▶, ↺, ●, Tr◀, Tr▶)
+
+**WebSocket Reliability**
+- Auto-reconnect with 2s retry interval when server is unavailable
+- Error banner shown when attempting actions without server connection
+- Offline fallback rendering: shows device shell with brand/model even before WS connects
+- Keyboard shortcuts: keys 1-8 = top row, Shift+1-8 = right column buttons
+
+**Backend: Color system refactored**
+- Unified `COLOR_TO_LED_RGB` dictionary shared between Python backend and JS frontend
+- Separate `MK1_VELOCITY_TO_COLOR` and `LK_PALETTE_TO_COLOR` lookup tables
+- `color_to_rgb()` helper for reliable color→RGB mapping
+- Device profiles expanded: `top_labels`, `right_labels`, `left_labels`, `extra_buttons`, `transport_labels`, `device_brand`, `model_line` fields

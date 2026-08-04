@@ -10,6 +10,11 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+[project.optional-dependencies]
+tools = [
+    "websockets>=14",
+]
+
 [project.scripts]
 nova-script = "src.main:main"
 

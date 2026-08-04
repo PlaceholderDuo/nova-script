@@ -231,13 +231,15 @@ class MidiManager:
         for device_name, conn in self.devices.items():
             if not conn.connected:
                 continue
+            if conn.input_port is None or conn.output_port is None:
+                continue
 
             in_still = any(
                 conn.input_port.name == p for p in in_ports
-            ) if conn.input_port else False
+            )
             out_still = any(
                 conn.output_port.name == p for p in out_ports
-            ) if conn.output_port else False
+            )
 
             if not in_still or not out_still:
                 logger.warning(

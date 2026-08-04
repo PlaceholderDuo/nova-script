@@ -29,6 +29,48 @@ The Launchpad Mini MK1 must be plugged directly into the Mac (not through cascad
 
 ---
 
+## Dev Tools (new — no hardware needed)
+
+All tools live in `tools/` and are independent of the main nova-script engine.
+
+### Virtual Hardware Simulator
+Develop and test without a physical Launchpad:
+
+```bash
+# Terminal 1: start the virtual MIDI bridge
+./tools/run-virtualizer.sh
+# Or: .venv/bin/python tools/novation-virtualizer.py
+
+# Browser: opens novation-virtualizer.html automatically
+# Click "Connect MIDI" → creates virtual ports like "Launchpad Mini"
+
+# Terminal 2: start nova-script
+nova-script live-show
+# nova-script auto-discovers the virtual port and connects
+```
+
+The browser shows a realistic Launchpad/Launchkey visual. Click pads → sends MIDI events → nova-script reacts. LED updates from nova-script appear in real time on the virtual device.
+
+**Controller presets:** Launchpad Mini MK1 (default), Launchpad MK1, Launchpad Mini MK3, Launchpad Pro MK3, Launchkey 49 MK2. Each renders accurate physical button layouts with labels.
+
+**Keyboard shortcuts:** `1-8` = top row buttons, `Shift+1-8` = right column buttons.
+
+**Stop:** `pkill -f novation-virtualizer`
+
+### LED Grid Editor
+Create custom Launchpad grid images visually:
+
+```bash
+open tools/led-grid-editor.html
+```
+
+- Set grid size, upload reference image for tracing
+- G/R/O mode: click cycles OFF → GREEN → RED → AMBER
+- RGB mode: click opens full color picker
+- Export: generates YAML for `config/screensaver-images.yaml`
+
+---
+
 ## Architecture
 
 ```
@@ -50,6 +92,12 @@ Engine
 │   ├── Menu (spatial 2×2 blocks, not default)
 │   └── Message (scrolling 5×5 text display)
 └── TUI (Textual, separate thread, profile/settings management)
+
+Dev Tools (independent of engine, in tools/)
+├── novation-virtualizer.py (virtual MIDI + WebSocket bridge)
+├── novation-virtualizer.html (browser-based hardware visualizer)
+├── run-virtualizer.sh (one-command launcher)
+└── led-grid-editor.html (visual YAML grid creator)
 ```
 
 ### Mode Shortcuts (global, any mode)
@@ -80,6 +128,7 @@ Engine
 | `src/midi/manager.py` | Port discovery + auto-reconnect |
 | `src/midi/clock.py` | Multi-source BPM with priority hierarchy |
 | `src/controllers/launchpad_mk1.py` | MK1 protocol (LED + input parsing) |
+| `src/controllers/launchkey_mk2.py` | Launchkey MK2 protocol |
 | `src/controllers/color_map.py` | LogicalColor enum + hardware mapping |
 | `src/ui/mode.py` | Mode base class (long press, pages, debounce) |
 | `src/ui/overlay_manager.py` | Priority overlay stack |
@@ -96,7 +145,11 @@ Engine
 | `docs/PAD-NAVIGATION-MANUAL.md` | Complete button reference |
 | `docs/FEATURES_AND_SPECS.md` | Full UX specification |
 | `docs/REFERENCE_PROJECTS.md` | Comparative research |
-| `BUILD_LOG.md` | 19 entries of development history |
+| `tools/novation-virtualizer.py` | **New** — Virtual MIDI + WebSocket backend |
+| `tools/novation-virtualizer.html` | **New** — Browser-based hardware visualizer |
+| `tools/run-virtualizer.sh` | **New** — One-command virtualizer launcher |
+| `tools/led-grid-editor.html` | **New** — Visual grid image creator/editor |
+| `BUILD_LOG.md` | 21 entries of development history |
 
 ---
 
@@ -113,6 +166,14 @@ Engine
 - Mode shortcuts (Top row 2-5)
 - BPM clock LED (solid until sync)
 - Press feedback (flash on press)
+
+### Working (virtualizer — no hardware needed)
+- Virtual MIDI port creation
+- Browser-based pad press simulation → MIDI events
+- Real-time LED state visualization in browser
+- Device switching (Launchpad/Launchkey)
+- LED-accurate color rendering with glow effects
+- Per-controller physical button layouts with labels
 
 ### Needs Hardware Verification
 - Combo detection (Top-1+2/3) — logic verified, not tested with simultaneous press
@@ -137,7 +198,7 @@ Engine
 4. **Color picker in TUI** — hardware-aware palette (MK1 discrete vs MK3 RGB), custom RGB picker
 5. **Reaper OSC testing** — send actual OSC messages, verify round-trip
 6. **Cascaded hub test** — determine if the input issue was purely hub chain or also user-action
-7. **More screensaver images** — build out the image library
+7. **More screensaver images** — build out the image library using the new LED grid editor tool
 
 ---
 
