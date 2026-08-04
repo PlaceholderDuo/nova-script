@@ -994,3 +994,72 @@ Full analysis in `docs/REFERENCE_PROJECTS.md`.
 ### Files Changed
 - `docs/REFERENCE_PROJECTS.md` — New: comprehensive research document
 - `BUILD_LOG.md` — This entry
+
+---
+
+## Entry #9 — 2026-08-04 — Combo Detection, Fireworks Particle System, Virtualizer Test Harness
+
+### Source
+Daniel via Claude Code. Feature spec implementation begins.
+
+### Features & Specs Document
+Created `docs/FEATURES_AND_SPECS.md` — comprehensive UX design covering:
+- Startup flow with color wave animation
+- Golden rules: Home button (Top-1), Overlay dismiss, Manual overrides (Top-1+2, Top-1+3)
+- Overlay priority system (Fireworks > HUD > Screensaver > Active Mode)
+- Menu mode refined layout with mode colors
+- Per-mode button mappings (Sequencer, Mixer, Performance)
+- Screensaver image system (64 images, 8 quick slots, picker interaction, BPM cycling, persistence)
+- Fireworks system (BPM-synced particles, 8-bar duration, gravity+trail, dismissible)
+- HUD system (text/char/image via OSC, temporary overlay)
+- TUI redesign with grid mirror, mode info, event log, image preview
+- Complete risk register with build order
+
+### Combo Detection — Risk #1: RESOLVED
+Created `ComboDetector` with full unit test suite (7 scenarios). Logic:
+- Top-1 press is held (not immediately acted on) — returns "consumed"
+- If Top-2 or Top-3 arrives within 250ms while Top-1 held → combo fires
+- If Top-1 released without combo partner → returns "home"
+- If combo window timeout expires → returns "home"
+- After combo fires, subsequent releases of combo buttons return "consumed" (suppressed)
+- `_combo_fired` flag prevents double-firing
+
+All 7 unit test scenarios pass. Hardware verification: top row buttons confirmed (id=200-205), but two-finger simultaneous hold not yet tested on device due to remote testing constraints.
+
+### Fireworks Particle System — Risk #2: IN PROGRESS
+Implemented `Fireworks` particle system:
+- Particles spawn in bursts (3-6 per beat) from bottom of grid
+- Rise with random velocity (8-15 units/s), gravity pulls back (-12 units/s²)
+- Colors cycle per beat: red → amber → green
+- Variable brightness based on remaining lifetime
+- Trail system: 1-step fading trail behind each particle
+- Auto-cleanup when done (trails cleared, grid restored)
+- Unit test: simulates 200 frames at 240 BPM, verifies all particles clear
+- Smooth 20fps rendering with no frame drops
+
+One bug found and fixed: trails weren't fully cleared after fireworks end.
+Added explicit `_trail.clear()` when `tick()` returns False.
+
+### Virtualizer Test Harness (`tests/virtualizer.py`)
+Designing a virtual hardware emulator for comprehensive testing:
+- Injects simulated MIDI events directly into controller callbacks
+- ASCII grid rendering maps LogicalColor to distinct characters:
+  OFF→·  RED→r/R/#  GREEN→g/G/$  AMBER→a/A/@  (low/med/high)
+- Supports short press, long press, press+release pairs
+- Captures all MIDI output messages for verification
+- Works with both Launchpad MK1 and Launchkey MK2 controllers
+- Enables full input→output pipeline testing without physical hardware
+
+### Files Changed
+- `docs/FEATURES_AND_SPECS.md` — New: complete UX specification
+- `tests/test_combo_detector.py` — New: 7-scenario unit test (all passing)
+- `tests/test_combo_hardware.py` — New: hardware integration test
+- `tests/test_fireworks.py` — New: particle system with unit tests
+- `BUILD_LOG.md` — Entries #8 + #9
+
+### Next Actions
+1. Complete virtualizer test harness
+2. Fix fireworks render cleanup (trail persistence)
+3. Build image storage + load/save
+4. Build overlay dismiss/restore flow
+5. Build startup wave animation
