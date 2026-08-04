@@ -24,12 +24,11 @@ class Mode(ABC):
         Bottom button (H) = page 1, G = page 2, etc.
         Call this in your _render() method."""
         for i in range(8):
-            idx = 7 - i
             if i < self._num_pages:
                 color = LogicalColor.GREEN_HIGH if i == self._page else LogicalColor.AMBER_LOW
-                self.controller.send_right_column_led(idx, color)
+                self.controller.send_right_column_led(i, color)
             else:
-                self.controller.send_right_column_led(idx, LogicalColor.OFF)
+                self.controller.send_right_column_led(i, LogicalColor.OFF)
 
     def clear_pages(self):
         for i in range(8):

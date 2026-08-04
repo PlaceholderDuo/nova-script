@@ -125,12 +125,11 @@ class PerformanceMode(Mode):
 
         elif event.control_id >= 100:
             page_idx = event.control_id - 100
-            requested_page = 7 - page_idx
-            if 0 <= requested_page < self._num_pages:
-                self._page = requested_page
+            if page_idx < self._num_pages:
+                self._page = page_idx
                 self._render()
             elif self._page == 0:
-                fx_idx = page_idx
+                fx_idx = page_idx - self._num_pages
                 if 0 <= fx_idx < 5:
                     self._toggle_fx(self._active_track, fx_idx)
                     self._render()
