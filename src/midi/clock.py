@@ -33,7 +33,8 @@ class BPMClock:
         self._midi_active = False
         self._osc_last_seen = 0.0
         self._midi_last_seen = 0.0
-        self._source_timeout = 2.0  # seconds before source is considered inactive
+        self._source_timeout = 2.0
+        self._has_external_sync: bool = False  # seconds before source is considered inactive
 
     def set_on_beat(self, callback):
         self._on_beat = callback
@@ -62,6 +63,7 @@ class BPMClock:
         self._last_osc_beat = now
         self._last_beat_time = now
         self._beat_count += 1
+        self._has_external_sync = True
         self._fire_beat()
 
     def feed_midi_clock(self):
@@ -94,6 +96,7 @@ class BPMClock:
             self._last_midi_beat = now
             self._last_beat_time = now
             self._beat_count += 1
+            self._has_external_sync = True
             self._fire_beat()
 
     def tick(self, now: float | None = None) -> bool:
@@ -101,13 +104,16 @@ class BPMClock:
         if now is None:
             now = time.monotonic()
 
-        if self._preferred == "Reaper" and self._osc_active:
+        if self._preferred in ("Reaper (OSC)", "Reaper") and self._osc_active:
             return False
-        if self._preferred == "Reaper" and not self._osc_active and self._midi_active:
+        if self._preferred in ("Reaper (OSC)", "Reaper") and not self._osc_active and self._midi_active:
             return False
         if self._source not in (self.SOURCE_INTERNAL, self.SOURCE_MIDI):
             if now - self._last_beat_time < self._beat_interval * 2:
                 return False
+
+        if not self._has_external_sync:
+            return False
 
         if now - self._last_beat_time >= self._beat_interval:
             self._last_beat_time = now

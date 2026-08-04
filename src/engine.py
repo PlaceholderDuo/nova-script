@@ -180,7 +180,7 @@ class Engine:
                 {"label": "PERF", "mode": "performance", "color": "RED_HIGH", "x": 0, "y": 6, "w": 2, "h": 2},
                 {"label": "CLIP", "mode": "clip_launcher", "color": "RED_MED", "x": 2, "y": 6, "w": 2, "h": 2},
                 {"label": "SEQ", "mode": "sequencer", "color": "AMBER_HIGH", "x": 4, "y": 6, "w": 2, "h": 2},
-                {"label": "MIX", "mode": "mixer", "color": "GREEN_HIGH", "x": 0, "y": 4, "w": 2, "h": 2},
+                {"label": "MIX", "mode": "mixer", "color": "GREEN_HIGH", "x": 6, "y": 6, "w": 2, "h": 2},
             ])
 
         self.mode_manager.register(menu_mode)
