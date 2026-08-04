@@ -22,10 +22,23 @@ from src.profiles import ProfileManager
 from src.engine import Engine
 
 
-async def run_chill():
-    setup_logging(logging.INFO)
+async def run_chill(with_tui: bool = False):
+    setup_logging(logging.WARNING)
     from src.ui.chill_mode import run_chill_mode
-    await run_chill_mode()
+
+    tui_queue = Queue() if with_tui else None
+
+    if with_tui:
+        from src.tui.chill_tui import run_chill_tui
+        tui_thread = threading.Thread(
+            target=run_chill_tui, args=(tui_queue,), daemon=True
+        )
+        tui_thread.start()
+
+    try:
+        await run_chill_mode(tui_queue=tui_queue)
+    except KeyboardInterrupt:
+        pass
 
 
 def setup_logging(level: int = logging.INFO):

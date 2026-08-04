@@ -1328,3 +1328,107 @@ This is cleaner than naming by device function because:
 - Add more chill patterns over time
 - Make pattern selection configurable
 - Allow transition between chill mode → full engine on button press
+
+---
+
+## Entry #15 — 2026-08-04 — Diagonal Chill Patterns, Chill TUI, Launchpad UX/UI Audit
+
+### Changes Made
+
+- **Diagonal chill patterns** — All 5 patterns rewritten for diagonal movement.
+  Wave sweeps diagonally across the grid. Breathe pulses in diagonal bands.
+  Starfield drifts diagonally. Rain falls diagonally with trailing droplets.
+  Gradient rotates diagonally. All confirmed: 6-64 cells lit depending on pattern,
+  multiple diagonal bands active simultaneously. No harsh vertical/horizontal lines.
+
+- **Chill TUI** (`src/tui/chill_tui.py`): Minimal toggle interface for chill mode.
+  Shows LED on/off status. Press L to toggle demo LEDs on/off. Press Q to quit.
+  Single queue communication — TUI sends toggle action, engine responds.
+  Launches alongside chill mode when `nova-script` runs without a profile.
+
+- **ChillRunner updated** — Accepts optional tui_queue. `_check_tui()` reads
+  toggle commands. When LEDs off: clears grid and sleeps. When toggled back on:
+  resumes pattern cycling from current time. `_commit()` skips when LEDs off.
+
+### Launchpad UX/UI Audit — What the User Sees
+
+A comprehensive walkthrough of the entire Launchpad visual experience:
+
+**1. Startup Wave (2 seconds)**
+Status: ✓ Working. Diagonal amber→green→red ripple from bottom-left to top-right.
+UX issue: None. Clear visual indicator that the system is alive and initializing.
+
+**2. Menu Mode (landing state)**
+Status: ✓ Working. 5 colored pads in a row on the grid.
+UX issues:
+- Pads are just colored squares — user must memorize which color = which mode
+- No text/labels on the MK1 (no screen)
+- Color scheme is intuitive: AMBER=sequencer (beats), GREEN=mixer (volume), RED=effects (processing), AMBER=performance (live), GREEN=device (control)
+- Mitigation: top-row buttons also trigger modes. Button 2=Seq, 3=Mix, 4=Perf, 5=FX, 6=Dev
+
+**3. Top-1 Home Button**
+Status: ✓ Working. Amber at home, green elsewhere. Blinks at BPM.
+UX: Discoverable but not obvious. The blink draws attention.
+Improvement opportunity: blink twice on the first beat after startup to signal "clock is running."
+
+**4. Mode Switching**
+Status: ✓ Working. Instant switch — old mode LEDs clear, new mode renders.
+UX issue: No visual transition. Abrupt change feels jarring.
+Improvement: Brief fade or flash on the switched-to mode pad for 200ms.
+
+**5. Overlay System (Screensaver / Fireworks / HUD)**
+Status: ✓ Working. First press dismisses, second press acts.
+UX issues:
+- When in screensaver, the entire grid shows an image. There's no visual indicator
+  that you're in an overlay vs. an active mode. Top-1 still blinks (good), but
+  the grid itself looks like you're in some mode.
+- HUD is temporary (1.5s) but covers the entire grid. The user can't see
+  what was underneath. HUD should be an overlay on top of the current grid,
+  not replace it entirely.
+- Fireworks fill the grid with particles. After fireworks end, auto-screensaver.
+  The transition might surprise the user if they didn't trigger fireworks manually.
+
+**6. Screensaver Image System**
+Status: ✓ Working. 64 images, 8 quick slots, image picker.
+UX: Image picker interaction (hold Top-8 for 2s) is not discoverable.
+Improvement: flash the top row buttons when in screensaver to hint at interaction.
+
+**7. BPM Clock / Beat Indicator**
+Status: ✓ Working. Top-1 blinks at BPM on all pages.
+UX: Single blink point. Good enough for tempo reference.
+Improvement: flash all 4 corners on the downbeat (beat 1 of each bar).
+
+**8. Chill Mode (default launch)**
+Status: ✓ Working. 5 diagonal patterns cycling 25-35s each.
+UX: Beautiful. Smooth, low-brightness, diagonal movement.
+Issues:
+- No indication of which pattern is playing
+- If user wants to switch to full engine from chill mode, they need to quit and restart
+- LED toggle (L key) is only in TUI, not on Launchpad
+
+**9. Visual Feedback on Button Press**
+Status: Partially working. Mode pads respond but no press feedback.
+UX issue: When user presses a grid pad, the pad should briefly flash brighter
+to confirm the press was registered. Currently pads stay the same brightness.
+
+### UX Priority Improvements (ranked)
+1. **Press feedback** — flash pressed pad brighter for 100ms (simple, high impact)
+2. **Mode switch transition** — 200ms fade to new mode (softens the jump)
+3. **Screensaver indicator** — subtle border flash to show "this is screensaver"
+4. **Downbeat flash** — all 4 corners flash on beat 1 of each bar
+5. **Chill→Engine transition** — pressing any button in chill mode launches engine
+6. **Pattern name display** — briefly show pattern name on grid during chill mode
+
+### Files Changed
+- `src/ui/chill_mode.py` — All 5 patterns diagonal, ChillRunner toggle support
+- `src/tui/chill_tui.py` — New: minimal chill mode TUI with LED toggle
+- `src/main.py` — Chill mode with optional TUI
+- `tests/test_chill_mode.py` — Updated virtualizer validation
+- `BUILD_LOG.md` — This entry
+
+### Next Actions
+1. Implement press feedback (flash pad on press)
+2. Add mode switch transition animation
+3. Add downbeat flash on beat 1
+4. Allow chill → engine transition via button press
+5. Add pattern name display during chill mode cycling
