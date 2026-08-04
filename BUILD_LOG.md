@@ -948,3 +948,49 @@ Launchpad Mini (vendor 0x1235, product 0x0036, USB 1.1 Full Speed)
 2. Build Device/FX control mode
 3. Add MIDI clock sync
 4. Test auto-reconnect
+
+---
+
+## Entry #8 — 2026-08-03 — Comparative Research: Existing Projects & Lessons Learned
+
+### Source
+Daniel via Claude Code. Research across 15+ open-source projects to learn from what exists.
+
+### Key Findings
+
+**Confirmed our architecture is correct:**
+- python-rtmidi (not PyGame) — verified by dhilowitz fork that explicitly migrated away from pygame.midi
+- Textual TUI — no better alternative found
+- python-osc (attwad) — 580 stars, zero deps, asyncio, the standard
+- Layered architecture (controllers → modes → protocol bridge) — no one else does this
+- LogicalColor abstraction — maps to both MK1 2-bit and MK3 palette
+- Long-press detection in base class — no library has this built in
+
+**Unique value we're creating (gaps no one fills):**
+1. No LED grid UI widget framework exists — our Mode system is the closest
+2. No standalone session view / clip launcher — our Performance mode fills this
+3. No multi-device Novation abstraction — our NovationController base + DeviceCapabilities
+4. No Launchpad→Reaper OSC bridge — our OscBridge is this
+
+**Best project to study:** Launchpad95 (400 stars) — the gold standard for Launchpad UX. Mode switching, scale quantization, step sequencer UI, device parameter mapping.
+
+**New ideas discovered:**
+- MK1 supports double buffering for flicker-free LED updates (beryxz finding)
+- MK1 supports hardware flashing/duty cycle natively
+- Canvas/Pixel API with shape drawing (circles, lines, rects)
+- Image→grid rendering (GIF/PNG → 8×8 LED)
+- Separate OSC command/feedback channels
+- MIDI learn pattern for hardware parameter mapping
+- Web-based config editor
+
+**Pitfalls to avoid (all confirmed our choices):**
+- PyGame MIDI — dead on Apple Silicon
+- Poll-only input — we have event system
+- Hardcoded per-device — we have abstraction layer
+- time.sleep() — we use asyncio + delta time
+
+Full analysis in `docs/REFERENCE_PROJECTS.md`.
+
+### Files Changed
+- `docs/REFERENCE_PROJECTS.md` — New: comprehensive research document
+- `BUILD_LOG.md` — This entry
