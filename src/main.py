@@ -119,16 +119,16 @@ def cmd_virtualizer_start():
         print("Error: virtual environment not found. Run: python3 -m venv .venv")
         sys.exit(1)
 
-    # Check if already running
+    # Check if already running (with timeout)
     try:
         result = subprocess.run(
-            ["lsof", "-ti:8766"], capture_output=True, text=True
+            ["lsof", "-ti:8766"], capture_output=True, text=True, timeout=3
         )
         if result.stdout.strip():
             print("Virtualizer is already running on port 8766")
             open_html(html)
             return
-    except FileNotFoundError:
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
     print("Starting virtualizer backend...")
@@ -140,7 +140,7 @@ def cmd_virtualizer_start():
 
     time.sleep(1)
     if proc.poll() is not None:
-        print("Error: Backend failed to start")
+        print("Error: Backend failed to start. Check port 8766 is free.")
         sys.exit(1)
 
     print(f"Virtualizer running (PID {proc.pid})")
@@ -149,7 +149,7 @@ def cmd_virtualizer_start():
 
 
 def open_html(path: Path):
-    subprocess.run(["open", str(path)], check=False)
+    subprocess.Popen(["open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def cmd_virtualizer_stop():
