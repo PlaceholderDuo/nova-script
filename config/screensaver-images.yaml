@@ -1,0 +1,403 @@
+images:
+  0:
+    name: waves
+    grid:
+    - - AMBER_LOW
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+    - - AMBER_MED
+      - AMBER_LOW
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+    - - AMBER_HIGH
+      - AMBER_MED
+      - AMBER_LOW
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+    - - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_MED
+      - AMBER_LOW
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+    - - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_MED
+      - AMBER_LOW
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+    - - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_MED
+      - AMBER_LOW
+      - 'OFF'
+      - 'OFF'
+    - - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_MED
+      - AMBER_LOW
+      - 'OFF'
+    - - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - AMBER_MED
+      - AMBER_LOW
+  1:
+    name: heart
+    grid:
+    - - 'OFF'
+      - RED_HIGH
+      - RED_HIGH
+      - 'OFF'
+      - 'OFF'
+      - RED_HIGH
+      - RED_HIGH
+      - 'OFF'
+    - - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+    - - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+    - - 'OFF'
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - 'OFF'
+    - - 'OFF'
+      - 'OFF'
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - RED_HIGH
+      - 'OFF'
+      - 'OFF'
+    - - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - RED_HIGH
+      - RED_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+    - - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+    - - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+  2:
+    name: checker
+    grid:
+    - - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+    - - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+    - - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+    - - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+    - - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+    - - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+    - - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+    - - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+      - 'OFF'
+      - GREEN_HIGH
+  3:
+    name: xmarks
+    grid:
+    - - RED_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - RED_HIGH
+    - - 'OFF'
+      - RED_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - RED_HIGH
+      - 'OFF'
+    - - 'OFF'
+      - 'OFF'
+      - RED_HIGH
+      - 'OFF'
+      - 'OFF'
+      - RED_HIGH
+      - 'OFF'
+      - 'OFF'
+    - - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - RED_HIGH
+      - RED_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+    - - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - RED_HIGH
+      - RED_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+    - - 'OFF'
+      - 'OFF'
+      - RED_HIGH
+      - 'OFF'
+      - 'OFF'
+      - RED_HIGH
+      - 'OFF'
+      - 'OFF'
+    - - 'OFF'
+      - RED_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - RED_HIGH
+      - 'OFF'
+    - - RED_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - RED_HIGH
+  4:
+    name: diamond
+    grid:
+    - - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+    - - 'OFF'
+      - 'OFF'
+      - AMBER_HIGH
+      - AMBER_MED
+      - AMBER_MED
+      - AMBER_HIGH
+      - 'OFF'
+      - 'OFF'
+    - - 'OFF'
+      - AMBER_HIGH
+      - AMBER_MED
+      - AMBER_LOW
+      - AMBER_LOW
+      - AMBER_MED
+      - AMBER_HIGH
+      - 'OFF'
+    - - AMBER_HIGH
+      - AMBER_MED
+      - AMBER_LOW
+      - 'OFF'
+      - 'OFF'
+      - AMBER_LOW
+      - AMBER_MED
+      - AMBER_HIGH
+    - - AMBER_HIGH
+      - AMBER_MED
+      - AMBER_LOW
+      - 'OFF'
+      - 'OFF'
+      - AMBER_LOW
+      - AMBER_MED
+      - AMBER_HIGH
+    - - 'OFF'
+      - AMBER_HIGH
+      - AMBER_MED
+      - AMBER_LOW
+      - AMBER_LOW
+      - AMBER_MED
+      - AMBER_HIGH
+      - 'OFF'
+    - - 'OFF'
+      - 'OFF'
+      - AMBER_HIGH
+      - AMBER_MED
+      - AMBER_MED
+      - AMBER_HIGH
+      - 'OFF'
+      - 'OFF'
+    - - 'OFF'
+      - 'OFF'
+      - 'OFF'
+      - AMBER_HIGH
+      - AMBER_HIGH
+      - 'OFF'
+      - 'OFF'
+      - 'OFF'
+  5:
+    name: all_amber
+    grid:
+    - &id001
+      - AMBER_LOW
+      - AMBER_LOW
+      - AMBER_LOW
+      - AMBER_LOW
+      - AMBER_LOW
+      - AMBER_LOW
+      - AMBER_LOW
+      - AMBER_LOW
+    - *id001
+    - *id001
+    - *id001
+    - *id001
+    - *id001
+    - *id001
+    - *id001
+  6:
+    name: all_red
+    grid:
+    - &id002
+      - RED_LOW
+      - RED_LOW
+      - RED_LOW
+      - RED_LOW
+      - RED_LOW
+      - RED_LOW
+      - RED_LOW
+      - RED_LOW
+    - *id002
+    - *id002
+    - *id002
+    - *id002
+    - *id002
+    - *id002
+    - *id002
+  7:
+    name: all_green
+    grid:
+    - &id003
+      - GREEN_LOW
+      - GREEN_LOW
+      - GREEN_LOW
+      - GREEN_LOW
+      - GREEN_LOW
+      - GREEN_LOW
+      - GREEN_LOW
+      - GREEN_LOW
+    - *id003
+    - *id003
+    - *id003
+    - *id003
+    - *id003
+    - *id003
+    - *id003
+quick_slots:
+  0: 0
+  1: 1
+  2: 2
+  3: 3
+  4: 4
+  5: 5
+  6: 6
+  7: 7
+last_image: 0

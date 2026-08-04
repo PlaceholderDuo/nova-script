@@ -1,0 +1,47 @@
+name: live-show
+description: Main music performance profile
+
+midi:
+  outputs:
+    force: "Akai Force"
+  clock:
+    source: internal
+    internal_bpm: 120
+
+osc:
+  listen_port: 9001
+  listen_host: "127.0.0.1"
+  reaper_port: 8000
+  reaper_host: "127.0.0.1"
+
+ui:
+  default_mode: menu
+  idle_timeout_ms: 30000
+  long_press_ms: 500
+  message_scroll_speed_ms: 150
+
+modes:
+  menu:
+    items:
+      - {label: "SEQ", mode: "sequencer", color: "AMBER_HIGH"}
+      - {label: "MIX", mode: "mixer", color: "GREEN_HIGH"}
+      - {label: "PERF", mode: "performance", color: "AMBER_HIGH"}
+      - {label: "FX", mode: "effects", color: "RED_HIGH"}
+      - {label: "DEV", mode: "device", color: "GREEN_HIGH"}
+
+  sequencer:
+    rows: 7
+    default_resolution: 16
+    midi_channel: 0
+
+  mixer:
+    tracks_per_bank: 8
+    fader_rows: 7
+
+screensaver:
+  cycle_enabled: false
+  firework_bars: 8
+
+tui:
+  enabled: true
+  grid_refresh_ms: 50

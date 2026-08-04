@@ -17,25 +17,32 @@ from src.ui.modes.sequencer import SequencerMode
 from src.ui.modes.mixer import MixerMode
 from src.ui.modes.message import MessageMode
 from src.ui.modes.performance import PerformanceMode
+from src.ui.overlay_manager import OverlayManager
+from src.ui.startup_wave import StartupWave
+from src.ui.image_store import ImageStore
 from src.osc.bridge import OscBridge
 from src.controllers.color_map import LogicalColor
+from src.ui.combo_detector import ComboDetector
 
 logger = logging.getLogger(__name__)
 
 
 class Engine:
-    def __init__(self, config_path: Optional[Path] = None):
-        self.config = self._load_config(config_path)
+    def __init__(self, config: Optional[dict] = None, tui_queue: Optional[Queue] = None):
+        self.config = config or {}
         self.midi_manager = MidiManager(poll_interval=0.5)
         self.grid = LogicalGrid(8, 8)
         self.mode_manager: Optional[ModeManager] = None
         self.controllers: dict[str, object] = {}
         self.osc: Optional[OscBridge] = None
+        self.overlay: Optional[OverlayManager] = None
+        self._combo: Optional[ComboDetector] = None
+        self._startup_wave: Optional[StartupWave] = None
+        self._image_store: Optional[ImageStore] = None
         self._running = False
         self._last_tick = time.monotonic()
-        self._idle_since = time.monotonic()
-        self._tui_queue: Optional[Queue] = None
-        self._idle_timeout_ms: int = 2000
+        self._tui_queue: Optional[Queue] = tui_queue
+        self._idle_timeout_ms: int = 30000
         self._message_mode: Optional[MessageMode] = None
 
     def set_tui_queue(self, queue):
@@ -54,7 +61,7 @@ class Engine:
         return {}
 
     async def start(self):
-        logger.info("Starting Nova-Script engine...")
+        logger.info(f"Starting Nova-Script (profile: {self.config.get('_profile_name', '?')})")
 
         self._setup_controllers()
         await self.midi_manager.start()
@@ -69,9 +76,18 @@ class Engine:
         self.osc.set_on_message(self._on_osc_message)
         await self.osc.start()
 
-        self._idle_timeout_ms = self.config.get("ui", {}).get("idle_timeout_ms", 2000)
-
+        self._idle_timeout_ms = self.config.get("ui", {}).get("idle_timeout_ms", 30000)
+        self._image_store = ImageStore()
+        self._setup_overlay()
         self._setup_modes()
+
+        self._startup_wave = StartupWave(self.grid, self.controllers["Launchpad Mini"])
+        self._startup_wave.start()
+        sim_time = self._startup_wave._start
+        for _ in range(80):
+            if not self._startup_wave.tick(now=sim_time):
+                break
+            sim_time += 0.05
 
         self._running = True
         self._last_tick = time.monotonic()
@@ -117,6 +133,21 @@ class Engine:
 
         self.midi_manager.set_on_connect(self._on_device_connect)
         self.midi_manager.set_on_disconnect(self._on_device_disconnect)
+
+    def _setup_overlay(self):
+        bpm = float(self.config.get("midi", {}).get("clock", {}).get("internal_bpm", 120))
+        self.overlay = OverlayManager(
+            self.grid,
+            self.controllers["Launchpad Mini"],
+            self._image_store,
+            idle_timeout_ms=self._idle_timeout_ms,
+            bpm=bpm,
+        )
+        self.overlay.start()
+        self._combo = ComboDetector()
+        sc_config = self.config.get("screensaver", {})
+        if sc_config.get("cycle_enabled"):
+            self.overlay.set_screensaver_cycle(True)
 
     def _setup_modes(self):
         self.mode_manager = ModeManager(self.grid, self.controllers["Launchpad Mini"])
@@ -183,18 +214,29 @@ class Engine:
             self.controllers[device_name].on_disconnect()
 
     def _on_grid_event(self, event):
-        self._idle_since = time.monotonic()
-        if self.mode_manager.active_mode_name == "message":
-            self._dismiss_message()
-            return
+        if self.overlay:
+            if self.overlay.handle_grid_event(event):
+                return
         if self.mode_manager:
             self.mode_manager.handle_grid_event(event)
 
     def _on_control_event(self, event):
-        self._idle_since = time.monotonic()
-        if self.mode_manager.active_mode_name == "message":
-            self._dismiss_message()
-            return
+        if self._combo:
+            result = self._combo.feed(event.control_id, event.pressed)
+            if result == "consumed":
+                return
+            if result == "home":
+                self.mode_manager.switch_to("menu")
+                return
+            if result == "screensaver":
+                self.overlay.trigger_screensaver()
+                return
+            if result == "fireworks":
+                self.overlay.trigger_fireworks()
+                return
+        if self.overlay:
+            if self.overlay.handle_control_event(event):
+                return
         if self.mode_manager:
             self.mode_manager.handle_control_event(event)
 
@@ -211,7 +253,8 @@ class Engine:
 
         if msg_type == "display_message":
             text = msg.get("text", "")
-            self._enqueue_display_message(text)
+            if self.overlay:
+                self.overlay.trigger_hud(text=text)
         elif msg_type == "mode_set":
             mode_name = msg.get("mode", "")
             if mode_name in self.mode_manager._modes:
@@ -223,16 +266,22 @@ class Engine:
         elif msg_type == "play_state":
             pass
 
-    def _enqueue_display_message(self, text: str):
-        if not text:
-            return
-        logger.info(f"Display message: {text}")
-        if self._message_mode:
-            self._message_mode.enqueue_message(text)
+    def _tick(self):
+        now = time.monotonic()
+        delta_ms = (now - self._last_tick) * 1000
+        self._last_tick = now
 
-    def _dismiss_message(self):
-        logger.info("Message dismissed by user input")
-        self.mode_manager.switch_back()
+        if self._combo:
+            result = self._combo.tick()
+            if result == "home":
+                self.mode_manager.switch_to("menu")
+
+        if self.overlay:
+            self.overlay.tick(delta_ms)
+            if not self.overlay.is_overlay_active and self.mode_manager:
+                self.mode_manager.tick(delta_ms)
+        elif self.mode_manager:
+            self.mode_manager.tick(delta_ms)
 
     async def _tui_broadcast_loop(self):
         while self._running:
@@ -263,7 +312,6 @@ class Engine:
                     )
                 except asyncio.TimeoutError:
                     self._tick()
-                    self._check_idle_message()
                     continue
 
                 device_name, message, timestamp = event_data[0], event_data[1], event_data[2]
@@ -273,28 +321,6 @@ class Engine:
                     controller.handle_raw_midi(message)
 
                 self._tick()
-                self._check_idle_message()
 
             except Exception as e:
                 logger.error(f"Event loop error: {e}", exc_info=True)
-
-    def _check_idle_message(self):
-        if self.mode_manager.active_mode_name == "message":
-            return
-
-        idle_ms = (time.monotonic() - self._idle_since) * 1000
-        if idle_ms < self._idle_timeout_ms:
-            return
-
-        if self._message_mode and self._message_mode._current_text:
-            logger.debug(f"Auto-activating message display (idle for {idle_ms:.0f}ms)")
-            self._message_mode.set_previous_mode(self.mode_manager.active_mode_name)
-            self.mode_manager.switch_to("message")
-
-    def _tick(self):
-        now = time.monotonic()
-        delta_ms = (now - self._last_tick) * 1000
-        self._last_tick = now
-
-        if self.mode_manager:
-            self.mode_manager.tick(delta_ms)

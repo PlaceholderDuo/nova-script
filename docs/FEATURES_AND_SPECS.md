@@ -312,3 +312,102 @@ Screensaver BPM cycling disabled, shows static image. Fireworks uses internal 12
 | Overlay dismiss flow | MEDIUM | Complex state transitions between overlay priorities. Must not leak button events |
 | Startup wave timing | LOW | Simple animation, already have LED control working |
 | Image picker interaction | LOW | State machine with tap/hold detection. Existing long-press code should handle |
+
+---
+
+## 12. Profile System
+
+### 12.1 Concept
+Profiles are complete configuration snapshots. Each profile defines everything: modes, button mappings, MIDI routing, OSC settings, screensaver images, and overlay behavior. Switch between profiles via CLI argument or programmatically.
+
+### 12.2 CLI
+```
+nova-script                    → launches with default profile (live-show)
+nova-script live-show          → launches live-show profile
+nova-script live-show-solo     → launches solo performance profile
+nova-script mac-control        → launches creative apps control profile
+nova-script save my-profile    → saves current state as a new profile
+nova-script list               → lists available profiles
+nova-script --tui live-show    → launches with TUI
+```
+
+### 12.3 Profile Storage
+```
+config/
+├── default.yaml               → base defaults (fallback)
+├── profiles/
+│   ├── live-show.yaml         → default music performance profile
+│   ├── live-show-solo.yaml    → solo performance variant
+│   └── mac-control.yaml       → creative apps control profile
+└── screensaver-images.yaml    → shared image store
+```
+
+### 12.4 Profile Contents
+```yaml
+name: live-show
+description: Main music performance profile
+version: 1
+
+midi:
+  outputs:
+    force: "Akai Force"
+  clock:
+    source: internal
+    bpm: 120
+
+osc:
+  listen_port: 9001
+  reaper_port: 8000
+
+ui:
+  default_mode: menu
+  idle_timeout_ms: 30000
+  long_press_ms: 500
+
+modes:
+  menu:
+    items:
+      - {label: "SEQ", mode: "sequencer", color: "AMBER_HIGH"}
+      - {label: "MIX", mode: "mixer", color: "GREEN_HIGH"}
+      - {label: "PERF", mode: "performance", color: "AMBER_HIGH"}
+      - {label: "FX", mode: "effects", color: "RED_HIGH"}
+      - {label: "DEV", mode: "device", color: "GREEN_HIGH"}
+
+  sequencer:
+    rows: 7
+    default_resolution: 16
+    midi_channel: 0
+
+screensaver:
+  cycle_enabled: false
+  cycle_image_ids: [0, 1, 2, 3, 4, 5, 6, 7]
+  firework_bars: 8
+
+# Future: app-switching hooks
+# hooks:
+#   - app: "DaVinci Resolve"
+#     profile_override: mac-control
+#     modes:
+#       - {label: "CUT", mode: "resolve_cut", color: "RED_HIGH"}
+#       - {label: "COLOR", mode: "resolve_color", color: "GREEN_HIGH"}
+```
+
+### 12.5 Import/Export
+Profiles can be exported to and imported from standalone `.yaml` or `.zip` files for sharing. Export bundles the profile YAML + any custom screensaver images. Import merges into the local profile store.
+
+### 12.6 How Profiles Work Internally
+1. CLI parses profile name
+2. Engine loads `profiles/<name>.yaml` (falls back to `default.yaml` for missing keys)
+3. All configuration flows from the profile dict
+4. Image store is shared across profiles (global)
+5. `nova-script save <name>` snapshots current in-memory state back to disk
+
+### 12.7 Future: App-Aware Profiles
+When `mac-control` profile is active, a background task monitors the focused application (via macOS accessibility API or AppleScript). When a configured app becomes focused, the engine switches to that app's mode set. When focus leaves, returns to default. This enables:
+- DaVinci Resolve focused → editing/color/export modes
+- Logic Pro focused → mixer/transport/plugin modes  
+- Terminal focused → back to music modes
+- Browser focused → screensaver auto-activates
+
+Architecture: `AppWatcher` class runs in background, polls focused app name every 500ms via `osascript -e 'tell application "System Events" to get name of first application process whose frontmost is true'`. Matches against profile hooks. Fires mode switch events.
+

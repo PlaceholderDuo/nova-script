@@ -12,7 +12,7 @@ from enum import IntEnum
 from src.controllers.base import GridEvent, ControlEvent, LogicalColor
 from src.layout.grid import LogicalGrid
 from src.ui.image_store import ImageStore
-from tests.test_fireworks import Fireworks
+from src.ui.fireworks import Fireworks
 
 logger = logging.getLogger(__name__)
 
