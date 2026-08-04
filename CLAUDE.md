@@ -25,7 +25,8 @@
 
 ## Dev Commands
 - Run: `python -m src.main` or `./scripts/run.sh`
-- TUI companion: Textual-based (`src/tui/`)
+- Run with TUI: `python -m src.main --tui`
+- Test harness: `python scripts/test_harness.py` (interactive Launchpad testing)
 - Config: `config/default.yaml`
 
 ## Key Patterns

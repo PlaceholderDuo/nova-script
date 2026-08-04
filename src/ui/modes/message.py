@@ -67,12 +67,17 @@ class MessageMode(Mode):
         self._scroll_speed_ms: float = 150.0
         self._last_scroll: float = 0.0
         self._previous_mode: str = ""
+        self._max_queue_size: int = 16
 
     def set_previous_mode(self, mode_name: str):
         self._previous_mode = mode_name
 
     def enqueue_message(self, text: str):
         text = text.upper().strip()
+        if not text:
+            return
+        if len(self._message_queue) >= self._max_queue_size:
+            self._message_queue.pop(0)
         self._message_queue.append(text)
         if not self._current_text:
             self._next_message()

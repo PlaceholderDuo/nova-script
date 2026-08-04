@@ -766,4 +766,119 @@ Daniel via Claude Code. Continuation of build after research session.
 5. Add velocity sensitivity support for Launchkey pads
 6. Test full Reaper ↔ nova-script OSC round-trip with actual Reaper
 
+---
+
+## Entry #5 — 2026-08-03 — Deep Sanity Checks, Edge Case Audit, Test Harness
+
+### Source
+Daniel via Claude Code. Pre-testing audit and preparation for step-by-step hardware testing.
+
+### Audit Results — All Passing
+
+#### LED Coordinate Mapping
+- Grid mapping `(x,y) → note = (7-y)*16 + x` verified for all 4 corners + center
+- Inverse mapping `note → (x,y) = (note%16, 7 - note//16)` verified
+- No collisions between grid notes and right-column notes (notes 8,24,40,56,72,88,104,120 all map to x≥8, caught by bounds check)
+- Pads beyond grid bounds (x>7 or y>7) correctly rejected
+- Top row CC range 0x68-0x6F (104-111) correct for 8 buttons
+- Right column notes [8,24,40,56,72,88,104,120] correct for 8 buttons
+
+#### Color Mapping
+- All 10 required LogicalColor values present in MK1_COLOR_MAP
+- All velocity values in valid range (0-127)
+- Formula `velocity = (green << 4) | red` verified:
+  - OFF=0, RED_HIGH=3, GREEN_HIGH=48, AMBER_LOW=17, AMBER_HIGH=51
+- `brightness()` and `base_color()` helper methods working
+
+#### Button Input Parsing
+- Grid presses: all 4 corners + center correctly parse to GridEvent with correct (x,y)
+- Note On vel=127 → GRID_PRESS, vel=0 → GRID_RELEASE
+- Top row (automap): CC 104-111 → control_id 200-207, FUNCTION_PRESS/RELEASE
+- Right column: notes 8,24,40,56,72,88,104,120 → control_id 100-107
+- Edge cases correctly ignored: out-of-range note 127, unknown CC 50, Note Off (0x80)
+- Note: Controller uses "Note On vel=0" convention for release. Raw Note Off (0x80) messages are ignored.
+
+#### Grid & Rendering
+- All 47 font glyphs verified 5×5 dimensions
+- LogicalGrid bounds checking: out-of-range set_cell() silently ignored
+- fill_rect, fill_row, fill_column all working with correct bounds
+- draw_bar_vertical: 0.5 value on 8-row bar → 4 filled cells (correct)
+- Dirty cell tracking: clear fills 64 dirty cells, second call returns 0
+
+#### Auto-Reconnect Flow Trace
+- **Disconnect detection:** `_check_connection_health()` compares port names against current port list every 500ms. Port name mismatch triggers `_disconnect_device()`.
+- **Graceful teardown:** Cancels callbacks, closes all ports (including extras for multi-port devices), resets connection flags.
+- **Reconnect:** `_try_connect_device()` scans ports by name pattern, opens fresh `MidiIn`/`MidiOut` with new index. `_on_connect_fired` flag prevents duplicate callbacks.
+- **State restoration:** Engine's `_on_device_connect` calls `controller.on_connect()` (resets + kicks input buffer) then `mode.enter()` (re-renders current mode).
+- **Thread safety:** rtmidi callbacks run in separate thread, push to asyncio.Queue. Engine's event loop reads from queue. No shared mutable state between threads.
+- **Port index changes handled:** Port discovery uses name matching, not index. Index shift on replug is transparent.
+
+#### Message Display Edge Cases
+- Empty messages silently dropped (`if not text: return`)
+- Queue overflow: max 16 messages, oldest dropped when full
+- Auto-dismiss: any button press in message mode returns to previous mode
+- Auto-activation: only when `_current_text` is non-empty AND idle time > timeout
+- Mode already "message": `_check_idle_message` returns early (no double-activation)
+- Font unknown chars → fallback to "?" glyph
+
+#### New Safeguards Added
+- `MessageMode._max_queue_size = 16`: prevents infinite queue growth from OSC spam
+- `enqueue_message()`: drops oldest message when queue full
+
+### Test Harness (`scripts/test_harness.py`)
+
+Created interactive test harness for step-by-step hardware testing. Features:
+
+**Grid LED tests:**
+- `h.set_led(x, y, 'color')` — Light individual pad
+- `h.clear()` — Clear all
+- `h.fill('color')` — Fill entire grid
+- `h.cross('color')` — X pattern
+- `h.border('color')` — Border pattern
+- `h.smiley()` — Smiley face
+- `h.heart()` — Heart pattern
+- `h.cycle_colors(x, y, delay, loops)` — Cycle through colors on a pad
+
+**Circular button LED tests:**
+- `h.set_top_led(idx, 'color')` — Light top row button
+- `h.set_right_led(idx, 'color')` — Light right column button
+- `h.all_outer('color')` — Light all outer buttons
+- `h.chase_top(delay, loops)` — Chase animation on top row
+- `h.chase_right(delay, loops)` — Chase animation on right column
+- `h.chase_grid(delay, loops)` — Chase animation on grid border
+
+**Button input test:**
+- `await h.check_buttons(timeout)` — Monitor and print button presses
+- Intercepts controller callbacks, prints event details
+- Background dispatch loop processes MIDI events from rtmidi callback thread
+
+**Architecture:**
+- Opens MIDI port, starts MidiManager with auto-reconnect
+- Background asyncio task drains MIDI event queue → dispatches to controller
+- Test commands execute synchronously (LED output is immediate)
+- Async commands (check_buttons) use `await` in REPL
+
+### Test Plan (next session)
+
+Following the user's specified testing order:
+
+1. **"Turn LED row 1 col 1 green"** → `h.set_led(0, 0, "GREEN_HIGH")` (bottom-left pad lit green)
+2. **Cycle green, red, orange** → `h.cycle_colors(0, 0, 0.5, 2)` (pad cycles through all 3 colors)
+3. **Chasing lights on outer circular buttons** → `h.chase_top(0.1, 3)` then `h.chase_right(0.1, 3)`
+4. **Graphics** → `h.smiley()`, `h.heart()`, `h.cross("AMBER_HIGH")`, `h.border("GREEN_HIGH")`
+5. **Scrolling text** → OSC trigger `/nova/display/message` via engine or direct
+6. **Button presses** → `await h.check_buttons(5)` → press Launchpad pads, verify (x,y) output
+
+### Files Changed
+- `src/ui/modes/message.py` — Added max queue size (16), overflow protection
+- `scripts/test_harness.py` — New: interactive test harness
+- `BUILD_LOG.md` — This entry
+
+### Next Actions
+1. **Test with Daniel** following the plan above
+2. After LED tests pass: fix button input if automap kick doesn't work
+3. After input works: build real UI modes page by page
+4. Git commit after each successful test milestone
+
+
 
