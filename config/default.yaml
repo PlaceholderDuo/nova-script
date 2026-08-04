@@ -1,0 +1,57 @@
+# Nova-Script Configuration
+
+# Device auto-discovery
+devices:
+  auto_discover: true
+  # Manual device entries (optional, overrides auto-discover)
+  # launchpad_mini_mk1:
+  #   input_port: "Launchpad Mini"
+  #   output_port: "Launchpad Mini"
+
+# OSC settings
+osc:
+  listen_port: 9000
+  listen_host: "127.0.0.1"
+  reaper_port: 8000
+  reaper_host: "127.0.0.1"
+
+# MIDI output routing
+midi:
+  # Where to send sequenced notes and CCs
+  force_output:
+    port_name: "Akai Force"  # Auto-discovered, or specify exact port name
+  clock:
+    source: "internal"  # internal | midi | osc
+    internal_bpm: 120.0
+
+# UI settings
+ui:
+  default_mode: "menu"
+  idle_timeout_ms: 2000  # Time before message display can auto-activate
+  long_press_ms: 500     # Hold threshold for secondary actions
+  message_scroll_speed_ms: 150  # ms per scroll step
+
+# Mode configuration
+modes:
+  menu:
+    button_row: 7  # Top row (0-indexed from bottom)
+    items:
+      - { label: "SEQ", mode: "sequencer", x: 0, color: "AMBER_HIGH" }
+      - { label: "MIX", mode: "mixer", x: 1, color: "GREEN_HIGH" }
+      - { label: "FX", mode: "effects", x: 2, color: "RED_HIGH" }
+      - { label: "PERF", mode: "performance", x: 3, color: "AMBER_HIGH" }
+      - { label: "DEV", mode: "device", x: 4, color: "GREEN_HIGH" }
+
+  sequencer:
+    rows: 7       # Pads used for note rows (leaving top row for controls)
+    default_resolution: 16  # Steps per beat: 4, 8, 16, 32
+    midi_channel: 0
+
+  mixer:
+    tracks_per_bank: 8
+    fader_rows: 7  # Resolution of volume fader
+
+# TUI settings
+tui:
+  enabled: true
+  grid_refresh_ms: 50  # How often to poll for grid state updates
