@@ -95,6 +95,10 @@ class InstrumentMode(Mode):
         self._a_flash_timer: float = 0.0
         self._a_flash_state: bool = False
 
+        self._hint_text: str = ""
+        self._hint_color: LogicalColor = LogicalColor.OFF
+        self._hint_expiry: float = 0.0
+
         self._bpm: float = 120.0
 
     def set_bpm(self, bpm: float):
@@ -233,13 +237,19 @@ class InstrumentMode(Mode):
     def _cycle_scale(self):
         names = SCALE_NAMES
         current = names.index(self._scale_name)
-        self._scale_name = names[(current + 1) % len(names)]
+        next_idx = (current + 1) % len(names)
+        next_name = names[next_idx]
+        hint = {"major": "M", "blues": "B", "chromatic": "C"}[next_name]
+        self._show_hint(hint, SCALE_COLORS[next_name])
+        self._scale_name = next_name
         self._release_all_notes()
         self._render()
         self._render_controls()
 
     def _toggle_hold(self):
         self._hold = not self._hold
+        color = LogicalColor.GREEN_HIGH if self._hold else LogicalColor.RED_HIGH
+        self._show_hint("H", color)
         if not self._hold:
             self._release_all_notes()
         self._render()
@@ -248,7 +258,10 @@ class InstrumentMode(Mode):
     def _cycle_arp(self):
         modes = [self.ARP_OFF, self.ARP_UP, self.ARP_DOWN]
         current = modes.index(self._arp_mode)
-        self._arp_mode = modes[(current + 1) % len(modes)]
+        next_mode = modes[(current + 1) % len(modes)]
+        color_map = {self.ARP_OFF: LogicalColor.RED_HIGH, self.ARP_UP: LogicalColor.GREEN_HIGH, self.ARP_DOWN: LogicalColor.AMBER_HIGH}
+        self._show_hint("A", color_map[next_mode])
+        self._arp_mode = next_mode
         if self._arp_mode == self.ARP_OFF:
             self._release_all_notes()
         else:
@@ -261,10 +274,17 @@ class InstrumentMode(Mode):
     def _cycle_arp_pattern(self):
         self._arp_pattern_idx = (self._arp_pattern_idx + 1) % len(ARP_PATTERNS)
         self._arp_pattern_name = ARP_PATTERNS[self._arp_pattern_idx]
+        color = ARP_PATTERN_COLORS.get(self._arp_pattern_idx, LogicalColor.OFF)
+        self._show_hint(str(self._arp_pattern_idx + 1), color)
         self._arp_step = 0
         self._last_arp_progress = 0.0
         self._render()
         self._render_controls()
+
+    def _show_hint(self, text: str, color: LogicalColor, duration: float = 0.3):
+        self._hint_text = text
+        self._hint_color = color
+        self._hint_expiry = time.monotonic() + duration
 
     def _on_pad_press(self, x: int, y: int):
         note = self._get_note(x, y)
@@ -373,17 +393,36 @@ class InstrumentMode(Mode):
                 self.grid.set_cell(x, y, color)
 
         self._render_offset_overlay()
+        if self._hint_text and time.monotonic() < self._hint_expiry:
+            self._render_hint(self._hint_text, self._hint_color)
         self.commit()
 
     def _render_offset_overlay(self):
         if not self._editing_offset:
             return
         sel_idx = OFFSET_OPTIONS.index(self._note_offset) if self._note_offset in OFFSET_OPTIONS else 0
-        for i, (_offset, label) in enumerate(zip(OFFSET_OPTIONS, OFFSET_LABELS)):
+        for i, offset in enumerate(OFFSET_OPTIONS):
             x = i
             y = 7
             color = LogicalColor.GREEN_HIGH if i == sel_idx else LogicalColor.AMBER_HIGH
             self.grid.set_cell(x, y, color)
+
+    def _render_hint(self, text: str, color: LogicalColor):
+        from src.ui.modes.message import FONT_5X5
+        for i, ch in enumerate(text):
+            glyph = FONT_5X5.get(ch)
+            if glyph is None:
+                continue
+            offset_x = 2 + i * 3 if len(text) <= 2 else 1 + i * 2
+            for row in range(5):
+                for col in range(5):
+                    if glyph[row][col] == "1":
+                        gx = offset_x + col
+                        if len(text) >= 3:
+                            gx = offset_x + col - 1
+                        gy = 6 - row
+                        if 0 <= gx < 8 and 0 <= gy < 8:
+                            self.grid.set_cell(gx, gy, color)
 
     def _render_controls(self):
         if self._editing_offset or self._a_held:

@@ -122,6 +122,23 @@ Patterns live in `config/arp_patterns/`. To customize: replace the JSON file wit
 
 Buttons F, G, H (indices 5–7) are reserved for future use. Currently OFF.
 
+### Visual Hints (Non-Blocking Overlays)
+
+When any right-column control button is pressed, a brief 5×5 letter overlay appears on the grid for 300ms. The letter and color indicate the **new state** the control is switching to. Hints are completely non-blocking — pad presses, ARP, and all other interactions continue normally while the hint is visible.
+
+| Control | What You See | Colors |
+|---------|-------------|--------|
+| **B (Scale)** | `M` / `B` / `C` | GREEN=Major, AMBER=Blues, RED=Chromatic |
+| **C (Hold)** | `H` | GREEN=ON, RED=OFF |
+| **D (ARP)** | `A` | RED=OFF, GREEN=Up, AMBER=Down |
+| **E (ARP Pat)** | `1` / `2` / `3` | GREEN=Normal, AMBER=Chordal, RED=Octaves |
+
+**Why 300ms:** Long enough to read, short enough to not interfere with playing. The grid returns to its normal instrument display automatically — no press required to dismiss.
+
+**Design rationale:** The hint letter color matches the right-column LED color of the target state, creating a consistent visual language. If ARP is cycling from OFF (red LED) to UP (green LED), the hint shows "A" in green. If Scale is cycling to Blues, the hint shows "B" in amber — matching the amber LED on the B button.
+
+
+
 ---
 
 ## Interaction Flow
