@@ -18,6 +18,7 @@ from src.ui.modes.mixer import MixerMode
 from src.ui.modes.message import MessageMode
 from src.ui.modes.performance import PerformanceMode
 from src.ui.modes.clip_launcher import ClipLauncherMode
+from src.ui.modes.instrument import InstrumentMode
 from src.ui.overlay_manager import OverlayManager
 from src.ui.startup_wave import StartupWave
 from src.ui.image_store import ImageStore
@@ -228,6 +229,14 @@ class Engine:
         )
         self.mode_manager.register(clip_launcher)
 
+        instrument = InstrumentMode(
+            self.grid,
+            self.controllers["Launchpad Mini"],
+            config=self.config.get("instrument"),
+            midi_manager=self.midi_manager,
+        )
+        self.mode_manager.register(instrument)
+
         default_mode = self.config.get("ui", {}).get("default_mode", "performance")
         self.mode_manager.switch_to(default_mode)
 
@@ -258,10 +267,11 @@ class Engine:
             self.mode_manager.handle_grid_event(event)
 
     def _on_control_event(self, event):
-        if self.overlay and "PRESS" in event.event_type.name:
+        is_press = "PRESS" in event.event_type.name
+        if self.overlay and is_press:
             self.overlay.mark_activity()
         if self._combo:
-            result = self._combo.feed(event.control_id, event.pressed)
+            result = self._combo.feed(event.control_id, is_press)
             if result == "consumed":
                 return
             if result == "home":
@@ -274,9 +284,8 @@ class Engine:
                 self.overlay.trigger_fireworks()
                 return
 
-        is_press = "PRESS" in event.event_type.name
         if is_press and not self.overlay.is_overlay_active:
-            shortcuts = {201: "performance", 202: "clip_launcher", 203: "sequencer", 204: "mixer"}
+            shortcuts = {201: "performance", 202: "clip_launcher", 203: "sequencer", 204: "mixer", 205: "instrument"}
             if event.control_id in shortcuts:
                 mode_name = shortcuts[event.control_id]
                 if mode_name in self.mode_manager._modes:

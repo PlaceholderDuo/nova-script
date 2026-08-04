@@ -1,0 +1,5 @@
+{
+  "name": "octaves",
+  "description": "Octave jumps — 3-octave span",
+  "intervals": [0, 7, 14, 7, 0, 7, 14, 7]
+}
