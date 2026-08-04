@@ -1,0 +1,71 @@
+# Nova-Script ReaperOSC Configuration
+# Place this file in ~/Library/Application Support/REAPER/OSC/
+# Then in REAPER: Preferences → Control/OSC/web → Add → OSC
+#   Mode: Configure device IP + port
+#   Pattern config: this file
+# 
+# REAPER receives on port 8000 (default), sends to :9001
+# Nova-script listens on :9001, sends to REAPER on :8000
+
+DEVICE_TRACK_COUNT 16
+DEVICE_SEND_COUNT 4
+DEVICE_RECEIVE_COUNT 4
+DEVICE_FX_COUNT 8
+DEVICE_FX_PARAM_COUNT 32
+DEVICE_FX_FOLLOWS DEVICE
+DEVICE_TRACK_FOLLOWS DEVICE
+
+# --- Incoming: nova-script → REAPER ---
+
+TRACK_VOLUME n/track/@/volume
+TRACK_PAN n/track/@/pan
+TRACK_MUTE n/track/@/mute
+TRACK_SOLO n/track/@/solo
+TRACK_REC_ARM n/track/@/recarm
+TRACK_SELECT n/track/@/select
+TRACK_VOLUME_DB n/track/@/volume/db
+
+FX_BYPASS n/track/@/fx/@/bypass
+FX_WETDRY n/track/@/fx/@/wetdry
+FX_PARAM_VALUE n/track/@/fx/@/fxparam/@/value
+FX_OPEN n/track/@/fx/@/open
+
+SEND_VOLUME n/track/@/send/@/volume
+SEND_PAN n/track/@/send/@/pan
+SEND_MUTE n/track/@/send/@/mute
+
+RECEIVE_VOLUME n/track/@/receive/@/volume
+RECEIVE_PAN n/track/@/receive/@/pan
+RECEIVE_MUTE n/track/@/receive/@/mute
+
+PLAY /play
+STOP /stop
+RECORD /record
+PAUSE /pause
+REPEAT /repeat
+REWIND /rewind
+FORWARD /forward
+TEMPO /tempo
+TIME /time
+MARKER /marker
+REGION /region
+ACTION i/action
+ACTION_STR s/action/str
+
+# --- Outgoing: REAPER → nova-script (feedback) ---
+
+REAPER_TRACK_FOLLOWS DEVICE
+REAPER_SEND_FOLLOWS DEVICE
+REAPER_FX_FOLLOWS DEVICE
+
+VU_TRACK n/track/@/vu
+VU_MASTER /master/vu
+TRACK_NAME s/track/@/name
+FX_NAME s/track/@/fx/@/name
+FX_PARAM_NAME s/track/@/fx/@/fxparam/@/name
+POSITION /time
+BEAT_POSITION /beat
+TEMPO /tempo
+PLAY /play
+STOP /stop
+REPEAT /repeat

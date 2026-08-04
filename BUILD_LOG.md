@@ -921,3 +921,30 @@ Launchpad Mini (vendor 0x1235, product 0x0036, USB 1.1 Full Speed)
 
 
 
+
+---
+
+## Entry #7 — 2026-08-03 — Performance Mode, Long-Press Detection, ReaperOSC Config
+
+### Changes Made
+
+- **Circular Button Verification:** All 16 outer buttons tested. Top row (numbered 1-8): CC 104-111 → control_id 200-207 ✓. Right column (lettered): notes 8,24,40,56,72,88,104,120 → control_id 100-107 ✓.
+
+- **Performance Mode** (`src/ui/modes/performance.py`): Ableton-style session clip launcher. 8 tracks × 8 scenes. Clip states: EMPTY/STOPPED/PLAYING/RECORDING/QUEUED. Short press = launch/stop, long press (500ms) = clear clip. Scene launch via right column, track stop via top row. Sends MIDI note + OSC /nova/clip/launch and /nova/clip/stop.
+
+- **Long-Press Detection** (`src/ui/mode.py`): Added to Mode base class. track_press()/resolve_press() returns "short"/"long"/"invalid". Configurable 500ms long-press, 80ms debounce. Available to all modes.
+
+- **ReaperOSC Config** (`config/nova-script.ReaperOSC`): Pattern file for REAPER. Full track/FX/send/transport mapping. VU + beat position feedback. Install to ~/Library/Application Support/REAPER/OSC/
+
+### Files Changed
+- src/ui/mode.py — Long-press detection
+- src/ui/modes/performance.py — New
+- src/engine.py — Performance mode registration
+- config/nova-script.ReaperOSC — New
+- BUILD_LOG.md — Entries #6 + #7
+
+### Next Actions
+1. Test Performance mode with button input on hardware
+2. Build Device/FX control mode
+3. Add MIDI clock sync
+4. Test auto-reconnect

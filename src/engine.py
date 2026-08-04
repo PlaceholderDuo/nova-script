@@ -16,6 +16,7 @@ from src.ui.modes.menu import MenuMode
 from src.ui.modes.sequencer import SequencerMode
 from src.ui.modes.mixer import MixerMode
 from src.ui.modes.message import MessageMode
+from src.ui.modes.performance import PerformanceMode
 from src.osc.bridge import OscBridge
 from src.controllers.color_map import LogicalColor
 
@@ -157,6 +158,14 @@ class Engine:
             self.controllers["Launchpad Mini"],
         )
         self.mode_manager.register(self._message_mode)
+
+        performance = PerformanceMode(
+            self.grid,
+            self.controllers["Launchpad Mini"],
+            midi_manager=self.midi_manager,
+            osc_bridge=self.osc,
+        )
+        self.mode_manager.register(performance)
 
         default_mode = self.config.get("ui", {}).get("default_mode", "menu")
         self.mode_manager.switch_to(default_mode)
