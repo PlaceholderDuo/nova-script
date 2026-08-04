@@ -1120,3 +1120,126 @@ Designing a virtual hardware emulator for comprehensive testing:
 3. Rebuild TUI with new spec layout
 4. Test with physical hardware when Launchpad reconnected
 5. Build effects/device control modes
+
+---
+
+## Entry #12 — 2026-08-04 — Profile System, CLI, Engine Integration, TUI Rebuild
+
+### Source
+Daniel via Claude Code. Final integration session.
+
+### Summary
+All major systems integrated into a unified engine. CLI entry point working. TUI rebuilt with profile management and settings. All 6 initial risks resolved. The system boots from `nova-script` command, plays startup wave, enters menu mode, and awaits interaction — with screensaver activation on idle timeout.
+
+### Changes Made
+
+#### CLI & Profile System
+- **ProfileManager** (`src/profiles.py`): Load/save/list/export/import YAML profiles from `config/profiles/`. Deep-merges with `config/default.yaml` for fallback values. Default `live-show` profile auto-created on first run.
+- **CLI** (`src/main.py`): Full command-line interface.
+  - `nova-script [profile]` — launch with named profile
+  - `nova-script --tui [profile]` — launch with visual TUI
+  - `nova-script list` — show available profiles
+  - `nova-script save/export/import` — profile management
+  - Installed as pip entry point
+- **live-show profile** (`config/profiles/live-show.yaml`): Default music performance profile with 5 modes, 30s idle timeout, 120 BPM, screensaver config.
+
+#### Engine Integration
+- **OverlayManager** wired into Engine: idle→screensaver, fireworks, HUD overlays. Two-press dismiss flow (first press consumed, second passes to mode).
+- **ComboDetector** wired into Engine: Top-1+2 = screensaver, Top-1+3 = fireworks, Top-1 alone = home (back to menu).
+- **StartupWave** plays on boot: amber→green→red diagonal ripple across 8×8 grid.
+- **ImageStore** loaded at startup: 8 default images, persisted to YAML.
+- **Control flow:** Button events → ComboDetector → OverlayManager → Mode handlers. Grid events → OverlayManager → Mode handlers.
+- Old `_idle_since` and `_check_idle_message` removed — overlay system replaces them.
+- `_on_osc_message` routes display messages to Overlay HUD instead of old message mode.
+
+#### Refactored Components
+- **ComboDetector** moved from `tests/` to `src/ui/combo_detector.py` — production-ready module.
+- **Fireworks** moved from `tests/` to `src/ui/fireworks.py` — production-ready particle system.
+- Test files updated to import from `src/ui/` as source of truth.
+
+#### TUI Rebuilt (`src/tui/app.py`)
+- Device connection status bar: LP/LK/OSC status with ✓/✗ indicators
+- Profile management screen (press P): list all profiles, load/save
+- Settings screen (press S): placeholder for future config options
+- Event log panel: last 50 events with timestamps
+- Live 8×8 grid mirror (existing, retained)
+- Keyboard shortcuts: Q=Quit, P=Profiles, S=Settings
+
+#### Features & Specs Updated
+- `docs/FEATURES_AND_SPECS.md`: Added full profile system design (CLI, storage, import/export, content format, app-aware profiles for future).
+
+### Architecture at Present
+
+```
+nova-script [profile] or nova-script --tui [profile]
+         │
+         ▼
+    main.py (CLI)
+         │
+         ▼
+    ProfileManager.load(profile_name)
+         │
+         ▼
+    Engine(config)
+         ├── MidiManager (port discovery, auto-reconnect)
+         │    ├── LaunchpadMiniMK1
+         │    └── Launchkey49MK2
+         ├── OscBridge (bidirectional REAPER OSC)
+         ├── ImageStore (64-image persistence)
+         ├── ComboDetector (multi-button combos)
+         ├── OverlayManager (priority stack)
+         │    ├── Fireworks (BPM particles)
+         │    ├── HUD (text/char display)
+         │    └── Screensaver (image cycling)
+         ├── StartupWave (boot animation)
+         ├── ModeManager
+         │    ├── Menu
+         │    ├── Sequencer
+         │    ├── Mixer
+         │    ├── Performance
+         │    └── Message
+         └── TUI (optional, separate thread)
+              ├── Grid mirror
+              ├── Profile manager
+              ├── Settings
+              └── Event log
+```
+
+### Test Status
+| System | Status | Method |
+|--------|--------|--------|
+| LED output | ✓ | Hardware, all colors |
+| Grid button input | ✓ | Hardware, correct coordinates |
+| Top row buttons | ✓ | Hardware, correct IDs |
+| Right column buttons | ✓ | Hardware, correct IDs |
+| Combo detection | ✓ | 7 unit tests |
+| Fireworks | ✓ | 200-frame simulation |
+| Image store | ✓ | Round-trip + persistence |
+| Overlay dismiss | ✓ | 5 integration tests (virtualizer) |
+| Startup wave | ✓ | Virtualizer, 73 frames |
+| Engine + overlay | ✓ | Clean startup/shutdown |
+| CLI | ✓ | nova-script list, load |
+| TUI imports | ✓ | Clean import, no errors |
+
+### Files Changed (this session)
+- `src/profiles.py` — New: profile manager
+- `src/ui/combo_detector.py` — Moved from tests/
+- `src/ui/fireworks.py` — Moved from tests/
+- `src/ui/overlay_manager.py` — New: priority overlay system
+- `src/ui/startup_wave.py` — New: boot animation
+- `src/ui/image_store.py` — New: image persistence
+- `src/main.py` — Rewritten: CLI with profile support
+- `src/engine.py` — Rewired: overlay, combo, wave integration
+- `src/tui/app.py` — Rebuilt: profiles, settings, device status
+- `config/profiles/live-show.yaml` — New: default profile
+- `config/screensaver-images.yaml` — New: 8 default images
+- `docs/FEATURES_AND_SPECS.md` — Updated with profile system
+- `BUILD_LOG.md` — Entries #9-#12
+
+### Next Actions
+1. Test TUI with `nova-script --tui` on hardware
+2. Build Effects/Device control modes
+3. Add MIDI clock sync (OSC beat position, MIDI clock)
+4. Test auto-reconnect with cable bump
+5. Build ReaperOSC → Reaper bridge test
+6. Future: TUI profile builder (drag-and-drop mode layouts)
