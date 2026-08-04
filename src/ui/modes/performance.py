@@ -69,6 +69,11 @@ class PerformanceMode(Mode):
         self._tuner_phase: float = 0.0
         self._bpm: float = 120.0
         self._last_beat: float = 0.0
+        self._tuner_state: str = "off"
+        self._tuner_state_start: float = 0.0
+        self._tuner_exit_start: float = 0.0
+        self._tuner_letter_idx: int = 0
+        self._tuner_letters = ["T", "N", "R"]
 
     def set_bpm(self, bpm: float):
         self._bpm = bpm
@@ -87,7 +92,8 @@ class PerformanceMode(Mode):
 
         if self._tuner_active:
             self._tuner_active = False
-            self._render()
+            self._tuner_state = "exit"
+            self._tuner_exit_start = time.monotonic()
             return
 
     def handle_control_event(self, event: ControlEvent):
@@ -97,7 +103,8 @@ class PerformanceMode(Mode):
 
         if self._tuner_active:
             self._tuner_active = False
-            self._render()
+            self._tuner_state = "exit"
+            self._tuner_exit_start = time.monotonic()
             return
 
         if event.control_id >= 200:
@@ -116,9 +123,11 @@ class PerformanceMode(Mode):
     def _toggle_mute(self, track_idx: int):
         track = self._tracks[track_idx]
         if track["alias"] == "GTR" and not self._muted[track_idx] and not self._tuner_active:
-            self._tuner_active = True
-            self._tuner_track = track_idx
             self._muted[track_idx] = True
+            self._tuner_track = track_idx
+            self._tuner_state = "intro"
+            self._tuner_state_start = time.monotonic()
+            self._tuner_letter_idx = 0
             self._send_osc(track["osc_mute"], 1)
             return
 
@@ -145,8 +154,13 @@ class PerformanceMode(Mode):
     def _render(self):
         self.clear()
 
-        if self._tuner_active:
-            self._render_tuner()
+        if self._tuner_state in ("intro", "active"):
+            self._render_tuner_state()
+            self.commit()
+            return
+
+        if self._tuner_state == "exit":
+            self._render_tuner_exit()
             self.commit()
             return
 
@@ -194,6 +208,66 @@ class PerformanceMode(Mode):
                 elif brightness > 0.3:
                     self.grid.set_cell(x, y, LogicalColor.GREEN_MED)
                 elif brightness > -0.3:
+                    self.grid.set_cell(x, y, LogicalColor.AMBER_LOW)
+
+    def _render_tuner_state(self):
+        now = time.monotonic()
+
+        if self._tuner_state == "intro":
+            elapsed = now - self._tuner_state_start
+            letter_duration = 0.3
+            transition_duration = 0.3
+            total_intro = 3 * letter_duration + transition_duration
+
+            if elapsed < 3 * letter_duration:
+                idx = int(elapsed / letter_duration)
+                letter = self._tuner_letters[min(idx, 2)]
+                self._render_letter(letter, LogicalColor.AMBER_HIGH)
+            elif elapsed < total_intro:
+                progress = (elapsed - 3 * letter_duration) / transition_duration
+                self._render_tuner_transition_in(progress)
+            else:
+                self._tuner_state = "active"
+                self._tuner_active = True
+                self._render_tuner()
+        else:
+            self._render_tuner()
+
+    def _render_tuner_exit(self):
+        elapsed = time.monotonic() - self._tuner_exit_start
+        duration = 0.3
+        if elapsed < duration:
+            self._render_tuner_fade(1.0 - elapsed / duration)
+        else:
+            self._tuner_state = "off"
+            self._tuner_active = False
+            self._render()
+
+    def _render_letter(self, letter: str, color: LogicalColor):
+        from src.ui.modes.message import FONT_5X5
+        glyph = FONT_5X5.get(letter, FONT_5X5.get("?", ["00000"] * 5))
+        for row in range(5):
+            for col in range(5):
+                if glyph[row][col] == "1":
+                    x = col + 2
+                    y = 6 - row
+                    if 0 <= x < 8 and 0 <= y < 8:
+                        self.grid.set_cell(x, y, color)
+
+    def _render_tuner_transition_in(self, progress: float):
+        for y in range(8):
+            for x in range(8):
+                v = math.sin((x + y) * 0.5 + progress * math.pi * 4)
+                if v > 0.3:
+                    self.grid.set_cell(x, y, LogicalColor.AMBER_LOW)
+
+    def _render_tuner_fade(self, progress: float):
+        for y in range(8):
+            for x in range(8):
+                v = math.sin((x + y) * 0.5 + progress * math.pi * 8) * progress
+                if v > 0.5:
+                    self.grid.set_cell(x, y, LogicalColor.GREEN_HIGH)
+                elif v > 0.2:
                     self.grid.set_cell(x, y, LogicalColor.AMBER_LOW)
 
     def update_tuner(self, cents: float):
