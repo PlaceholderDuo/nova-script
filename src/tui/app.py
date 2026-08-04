@@ -124,7 +124,11 @@ class SettingsScreen(ModalScreen):
 
         pref_options = [(s, s) for s in sources]
         fallback_options = [(s, s) for s in sources]
-        downbeat_options = [("Tempo LED only", "tempo_led"), ("4 corners flash", "4 corners")]
+        downbeat_options = [
+            ("Tempo LED (beat 1 distinct)", "tempo_led"),
+            ("4 corners flash", "4 corners"),
+            ("Disable", "disable"),
+        ]
         downbeat_color_opts = [(c, c) for c in ["GREEN_HIGH", "RED_HIGH", "AMBER_HIGH", "GREEN_MED", "RED_MED", "AMBER_MED"]]
 
         with Container(id="settings-dialog"):

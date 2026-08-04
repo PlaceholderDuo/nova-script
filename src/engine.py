@@ -266,40 +266,50 @@ class Engine:
             return
         self.mode_manager.switch_to(mode_name)
 
-    def _set_home_led(self):
-        """Set Top-1 LED: orange at home, green elsewhere."""
+    def _set_home_led(self, color_override: LogicalColor | None = None):
         lp = self.controllers.get("Launchpad Mini")
         if lp is None:
             return
+        if not self._beat_led_on:
+            lp.send_top_row_led(0, LogicalColor.OFF)
+            return
+        if color_override is not None:
+            lp.send_top_row_led(0, color_override)
+            return
         at_home = self.mode_manager and self.mode_manager.active_mode_name == "menu"
         color = LogicalColor.AMBER_HIGH if at_home else LogicalColor.GREEN_HIGH
-        if self._beat_led_on:
-            lp.send_top_row_led(0, color)
-        else:
-            lp.send_top_row_led(0, LogicalColor.OFF)
+        lp.send_top_row_led(0, color)
 
     def _on_beat(self, beat_count: int):
         self._beat_led_on = True
         self._beat_led_off_time = time.monotonic() + 0.08
-        self._set_home_led()
+        mode = self.config.get("ui", {}).get("downbeat_flash", "tempo_led")
 
-        if beat_count % 4 == 1 and self._last_downbeat != beat_count:
+        is_downbeat = (beat_count % 4 == 1)
+        is_new = (is_downbeat and self._last_downbeat != beat_count)
+        if is_new:
             self._last_downbeat = beat_count
-            downbeat_mode = self.config.get("ui", {}).get("downbeat_flash", "tempo_led")
-            if downbeat_mode == "4 corners":
-                self._flash_downbeat_corners()
-            elif downbeat_mode == "tempo_led":
-                pass
 
-    def _flash_downbeat_corners(self):
-        lp = self.controllers.get("Launchpad Mini")
-        if lp is None:
-            return
+        if mode == "disable":
+            self._set_home_led()
+        elif mode == "tempo_led":
+            if is_downbeat:
+                self._set_home_led(self._get_downbeat_color())
+            else:
+                self._set_home_led()
+        elif mode == "4 corners":
+            if is_downbeat:
+                self._set_home_led(self._get_downbeat_color())
+                self._flash_downbeat_corners()
+            else:
+                self._set_home_led()
+
+    def _get_downbeat_color(self) -> LogicalColor:
         color_name = self.config.get("ui", {}).get("downbeat_color", "GREEN_HIGH")
         try:
-            color = LogicalColor[color_name]
+            return LogicalColor[color_name]
         except KeyError:
-            color = LogicalColor.GREEN_HIGH
+            return LogicalColor.GREEN_HIGH
         corners = [(0, 0), (7, 0), (0, 7), (7, 7)]
         for x, y in corners:
             lp.set_grid_color(x, y, color)

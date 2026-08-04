@@ -1432,3 +1432,28 @@ to confirm the press was registered. Currently pads stay the same brightness.
 3. Add downbeat flash on beat 1
 4. Allow chill → engine transition via button press
 5. Add pattern name display during chill mode cycling
+
+---
+
+## Entry #16 — 2026-08-04 — Downbeat UX: 3-mode tempo LED system
+
+Refined Top-1 LED behavior with 3 configurable modes:
+
+**"Tempo LED (beat 1 distinct)"** — Beat 1 flashes the configured downbeat
+color (e.g. GREEN_HIGH), beats 2-4 flash the normal tempo color (AMBER at
+home, GREEN elsewhere). Single LED communicates both tempo and bar position.
+
+**"4 corners flash"** — Same Top-1 behavior as above, PLUS all 4 corners
+flash the downbeat color on beat 1 of each bar. Stronger visual pulse.
+
+**"Disable"** — Top-1 blinks normal tempo color on ALL beats equally.
+No downbeat differentiation. Clean if you don't need bar position.
+
+Engine: _set_home_led() now accepts optional color override. _on_beat()
+branches per mode, tracks downbeat via beat_count % 4 == 1.
+Settings screen: Select with all 3 options, saves to profile.
+
+### Files Changed
+- src/engine.py — 3-mode downbeat logic, _get_downbeat_color() helper
+- src/tui/app.py — Added "Disable" option to downbeat Select
+- BUILD_LOG.md — This entry
