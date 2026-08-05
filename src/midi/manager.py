@@ -28,6 +28,8 @@ class DeviceConnection:
     extra_inputs: dict[str, tuple[Optional[MidiPort], Optional[rtmidi.MidiIn]]] = field(default_factory=dict)
     extra_outputs: dict[str, tuple[Optional[MidiPort], Optional[rtmidi.MidiOut]]] = field(default_factory=dict)
     secondary_connected: bool = False
+    _reported_secondary: bool = field(default=False, repr=False)
+    _on_connect_fired: bool = field(default=False, repr=False)
 
 
 class MidiManager:
