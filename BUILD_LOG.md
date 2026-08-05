@@ -1834,3 +1834,81 @@ Example: Major scale [0,2,4,5,7,9,11], offset=12 (octaves), root=48:
 - `config/arp_patterns/octaves.json` — New: octave-jump ARP pattern
 - `docs/INSTRUMENT_MODE.md` — New: full vision and specification document
 - `BUILD_LOG.md` — This entry
+
+---
+
+## Entry #24 — 2026-08-05 — Deep Research: MK1 LED Control, Diff-Based Rendering Plan
+
+### Purpose
+Comprehensive research into how the Launchpad Mini MK1 hardware actually handles LED control at the firmware, USB, and MIDI protocol levels. Identified fundamental inefficiencies in nova-script's rendering pipeline and documented a phased implementation plan.
+
+### Research Document
+[`docs/MIDI_LED_CONTROL_RESEARCH.md`](docs/MIDI_LED_CONTROL_RESEARCH.md) — 275-line deep dive covering:
+- Physical LED matrix architecture (multiplexed scanning, PWM brightness)
+- Full MIDI protocol breakdown (Note On for grid+right column, CC for top row)
+- Color encoding table (green<<4 | red)
+- Hardware limitations: no double-buffer, no state cache, no bulk clear, no read-back
+- Maximum update rate analysis (~800-900 msg/s practical limit on USB 1.1)
+- Automap kick internals (buffer flush + session mode reset)
+- Cross-device comparison (MK1 → MK2 → MK3 → Launchkey)
+- 6 game-changing insights with code-level fix descriptions
+
+### Key Findings
+
+**Finding 1: `clear()` + render sends 128 messages per frame (64 OFF + 64 ON).**
+Every mode calls `self.clear()` at the start of `_render()`, marking all 64 cells dirty. Even when nothing changed, this flushes 64 OFF messages followed by 64 ON messages through USB. At 10Hz idle tick, that's 640 messages/second — wasteful and causes visible shimmer.
+
+**Finding 2: No double-buffer = visible black flash between renders.**
+Because the MK1 applies MIDI messages immediately with no frame buffer, the `clear()` call flashes all pads dark before the render fills them back in. This is perceivable as a single-frame flicker on every mode render.
+
+**Finding 3: LED state is fire-and-forget — host must track it.**
+The MK1 cannot be queried for current LED state. `LogicalGrid` + `_grid_state` in NovationController are the sole source of truth. Every `clear()` that's not followed by a complete render breaks the truth-hardware bond.
+
+**Finding 4: Messages sent before device connects are silently lost.**
+When nova-script starts without a Launchpad connected, all renders go into the void. On reconnect, only `clear_grid()` is sent, not the mode's current state. The mode's `enter()` must be called on reconnect.
+
+### Implementation Plan
+
+[`docs/IMPLEMENTATION_PLAN_RENDER.md`](docs/IMPLEMENTATION_PLAN_RENDER.md) — 11-task plan across 3 phases:
+
+**Phase 1 — Diff-Based Rendering:**
+- Controller-side diff check in `set_grid_color()` — skip send if color unchanged (2-line fix)
+- Remove `clear()` from all 5 modes' `_render()` methods
+- Modes draw new state directly; `commit_diff()` sends only changed cells
+- Mode transitions (enter/exit) keep `clear()` for full repaint
+
+**Phase 2 — Tick Throttle:**
+- `_needs_render` flag in Mode base class
+- `mark_dirty()` called on state changes only
+- Idle ticks send 0 messages (was 0-64 per tick)
+- ARP/animation modes still render at BPM rate
+
+**Phase 3 — Connection State:**
+- Verify `mode.enter()` on reconnect already works
+- Add `refresh_grid()` to force full re-sync after reconnect
+
+### Expected Impact
+| Metric | Before | After |
+|--------|--------|-------|
+| Messages per mode switch | 128 | ~64 |
+| Messages per idle tick | 0-64 | 0 |
+| Visual flicker | Perceivable | Eliminated |
+| Startup wave | 1280 msg | ~200 msg |
+
+### Screensaver + Color Fixes (same session)
+- **Screensaver ghost composites**: `_render_screensaver_image` lacked `grid.clear()` — OFF cells from new image didn't overwrite ON cells from old image. Fixed in overlay_manager.py.
+- **MK1 LED color calibration**: Adjusted all 28 RGB values in Python backend + HTML frontend. Red ~625nm → warmer orange-red. Green ~525nm → less saturated. Amber → golden warmth through diffuser. OFF pad → darker grey.
+- **Virtualizer CLI**: Changed to `nova-script <profile> virtualizer`. Clean shutdown on SIGINT kills both processes.
+- Fixed `_reported_secondary` AttributeError in DeviceConnection dataclass.
+- Fixed YAML indentation bug in screensaver-images.yaml.
+
+### Files Changed
+- `docs/MIDI_LED_CONTROL_RESEARCH.md` — New: 275-line research document
+- `docs/IMPLEMENTATION_PLAN_RENDER.md` — New: comprehensive implementation plan
+- `src/ui/overlay_manager.py` — Added `grid.clear()` to screensaver render
+- `tools/novation-virtualizer.py` — Updated color table
+- `tools/novation-virtualizer.html` — Updated color table
+- `src/main.py` — Virtualizer CLI refactor
+- `src/midi/manager.py` — DeviceConnection fields
+- `config/screensaver-images.yaml` — Fixed YAML indent
+- `BUILD_LOG.md` — This entry
