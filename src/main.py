@@ -3,15 +3,14 @@
 Nova-Script CLI entry point.
 
 Usage:
-  nova-script                     → launch with default live-show profile
-  nova-script <profile>           → launch with named profile
-  nova-script --tui [<profile>]   → launch with TUI companion
-  nova-script save <profile>      → save current state as profile
-  nova-script list                → list available profiles
-  nova-script export <profile> <path> → export profile to file
-  nova-script import <path> [<alias>] → import profile from file
-  nova-script virtualizer              → start virtualizer backend + open browser GUI
-  nova-script virtualizer stop          → stop virtualizer and cleanup
+  nova-script                              → launch with default live-show profile
+  nova-script <profile>                    → launch with named profile
+  nova-script <profile> [--tui] [virtualizer]   → launch with TUI + virtualizer
+  nova-script save <profile>               → save current state as profile
+  nova-script list                         → list available profiles
+  nova-script export <profile> <path>      → export profile to file
+  nova-script import <path> [<alias>]      → import profile from file
+  nova-script virtualizer stop             → stop virtualizer and cleanup
 """
 import asyncio
 import logging
@@ -56,7 +55,7 @@ def setup_logging(level: int = logging.INFO):
     )
 
 
-async def run_engine(config: dict, with_tui: bool = False):
+async def run_engine(config: dict, with_tui: bool = False, virt_proc=None):
     setup_logging(logging.DEBUG if not with_tui else logging.INFO)
 
     tui_queue = Queue() if with_tui else None
@@ -109,25 +108,24 @@ def _get_project_dir() -> Path:
     return Path(__file__).parent.parent
 
 
-def cmd_virtualizer_start():
+def _start_virtualizer() -> subprocess.Popen | None:
     project = _get_project_dir()
     backend = project / "tools" / "novation-virtualizer.py"
     html = project / "tools" / "novation-virtualizer.html"
     python = project / ".venv" / "bin" / "python"
 
     if not python.exists():
-        print("Error: virtual environment not found. Run: python3 -m venv .venv")
-        sys.exit(1)
+        print("Error: .venv not found")
+        return None
 
-    # Check if already running (with timeout)
     try:
         result = subprocess.run(
             ["lsof", "-ti:8766"], capture_output=True, text=True, timeout=3
         )
         if result.stdout.strip():
-            print("Virtualizer is already running on port 8766")
+            print("Virtualizer already running on port 8766")
             open_html(html)
-            return
+            return None
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
@@ -137,38 +135,53 @@ def cmd_virtualizer_start():
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
-
     time.sleep(1)
     if proc.poll() is not None:
-        print("Error: Backend failed to start. Check port 8766 is free.")
-        sys.exit(1)
+        print("Error: Backend failed to start")
+        return None
 
     print(f"Virtualizer running (PID {proc.pid})")
-    print(f"WebSocket: ws://localhost:8766")
     open_html(html)
+    return proc
 
 
-def open_html(path: Path):
-    subprocess.Popen(["open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def _stop_virtualizer(proc: subprocess.Popen | None = None):
+    if proc is not None:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (ProcessLookupError, OSError):
+            pass
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti:8766"], capture_output=True, text=True, timeout=3
+        )
+        for pid in result.stdout.strip().split("\n"):
+            if pid:
+                try:
+                    os.kill(int(pid), signal.SIGTERM)
+                except OSError:
+                    pass
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
 
 
 def cmd_virtualizer_stop():
-    killed = False
+    proc = None
     try:
         result = subprocess.run(
             ["lsof", "-ti:8766"], capture_output=True, text=True
         )
-        for pid in result.stdout.strip().split("\n"):
-            if pid:
-                os.kill(int(pid), signal.SIGTERM)
-                killed = True
+        if result.stdout.strip():
+            proc = True
     except FileNotFoundError:
         pass
 
-    if killed:
-        print("Virtualizer stopped")
-    else:
-        print("No virtualizer running")
+    _stop_virtualizer()
+    print("Virtualizer stopped" if proc else "No virtualizer running")
+
+
+def open_html(path: Path):
+    subprocess.Popen(["open", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def main():
@@ -178,16 +191,14 @@ def main():
         asyncio.run(run_chill())
         return
 
-    if args[0] == "virtualizer":
-        if len(args) >= 2 and args[1] == "stop":
-            cmd_virtualizer_stop()
-            return
-        cmd_virtualizer_start()
+    if args[0] == "virtualizer" and len(args) >= 2 and args[1] == "stop":
+        cmd_virtualizer_stop()
         return
 
-    if args[0].startswith("virt") and args[0] != "virtualizer":
-        print(f"Unknown command '{args[0]}'. Did you mean 'virtualizer'?")
-        print("Usage: nova-script virtualizer [stop]")
+    if args[0].startswith("virt") and len(args) == 1:
+        print(f"Unknown command '{args[0]}'.")
+        print("Usage: nova-script <profile> [--tui] [virtualizer]")
+        print("  e.g.  nova-script live-show virtualizer")
         sys.exit(1)
 
     if args[0] == "list":
@@ -217,15 +228,51 @@ def main():
         return
 
     with_tui = "--tui" in args
+    use_virtualizer = "virtualizer" in args
     profile_name = "live-show"
 
     for a in args:
-        if a != "--tui" and not a.startswith("-"):
+        if a not in ("--tui", "virtualizer") and not a.startswith("-"):
             profile_name = a
             break
 
     config = ProfileManager().load(profile_name)
-    asyncio.run(run_engine(config, with_tui=with_tui))
+
+    virt_proc = None
+    if use_virtualizer:
+        virt_proc = _start_virtualizer()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    def shutdown():
+        loop.call_soon_threadsafe(lambda: None)
+        for task in asyncio.all_tasks(loop):
+            task.cancel()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, shutdown)
+        except NotImplementedError:
+            signal.signal(sig, lambda s, f: shutdown())
+
+    try:
+        loop.run_until_complete(run_engine(config, with_tui=with_tui))
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
+    finally:
+        tasks = asyncio.all_tasks(loop)
+        for task in tasks:
+            task.cancel()
+        try:
+            loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+        except Exception:
+            pass
+        loop.close()
+        if virt_proc:
+            print("Shutting down virtualizer...")
+            _stop_virtualizer(virt_proc)
+            print("Done.")
 
 
 if __name__ == "__main__":
