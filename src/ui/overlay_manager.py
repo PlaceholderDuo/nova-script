@@ -243,6 +243,7 @@ class OverlayManager:
         img = self.image_store.get_image(self._screensaver_image)
         if img is None:
             return
+        self.grid.clear()
         for y, row in enumerate(img):
             display_y = 7 - y
             for x, color in enumerate(row):

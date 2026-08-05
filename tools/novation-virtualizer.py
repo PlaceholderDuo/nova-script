@@ -43,19 +43,21 @@ LK_PALETTE_TO_COLOR: dict[int, str] = {
 }
 
 # LED-accurate RGB approximations for each LogicalColor
-# MK1 uses bicolor red+green LEDs; amber is both on simultaneously.
-# RGB devices approximate the narrower gamut of actual RGB LEDs.
+# Calibrated against MK1 Launchpad Mini hardware:
+#   Red LED ~625nm through silicone diffuser → warm red-orange
+#   Green LED ~525nm through diffuser → vivid lime-green
+#   Amber = both LEDs on simultaneously → golden amber through diffuser
 COLOR_TO_LED_RGB: dict[str, tuple[int, int, int]] = {
-    "OFF": (58, 58, 58),
-    "RED_LOW": (80, 4, 0), "RED_MED": (148, 10, 0), "RED_HIGH": (255, 20, 0),
-    "GREEN_LOW": (0, 62, 4), "GREEN_MED": (0, 130, 14), "GREEN_HIGH": (0, 255, 30),
-    "AMBER_LOW": (80, 42, 0), "AMBER_MED": (160, 88, 0), "AMBER_HIGH": (255, 155, 8),
-    "ORANGE_LOW": (80, 35, 0), "ORANGE_MED": (158, 65, 0), "ORANGE_HIGH": (255, 120, 5),
-    "YELLOW_LOW": (75, 65, 0), "YELLOW_MED": (148, 130, 0), "YELLOW_HIGH": (255, 225, 0),
-    "WHITE_LOW": (75, 72, 68), "WHITE_MED": (148, 142, 135), "WHITE_HIGH": (255, 245, 235),
-    "BLUE_LOW": (0, 4, 70), "BLUE_MED": (0, 10, 145), "BLUE_HIGH": (0, 18, 255),
-    "PURPLE_LOW": (55, 0, 55), "PURPLE_MED": (120, 0, 120), "PURPLE_HIGH": (230, 0, 230),
-    "CYAN_LOW": (0, 58, 58), "CYAN_MED": (0, 125, 125), "CYAN_HIGH": (0, 240, 240),
+    "OFF": (42, 42, 44),
+    "RED_LOW": (90, 10, 0), "RED_MED": (165, 22, 3), "RED_HIGH": (245, 38, 8),
+    "GREEN_LOW": (0, 92, 6), "GREEN_MED": (2, 165, 14), "GREEN_HIGH": (8, 248, 25),
+    "AMBER_LOW": (90, 50, 0), "AMBER_MED": (168, 98, 5), "AMBER_HIGH": (248, 158, 14),
+    "ORANGE_LOW": (85, 38, 0), "ORANGE_MED": (160, 72, 3), "ORANGE_HIGH": (248, 125, 8),
+    "YELLOW_LOW": (80, 70, 0), "YELLOW_MED": (150, 135, 3), "YELLOW_HIGH": (248, 228, 8),
+    "WHITE_LOW": (80, 75, 70), "WHITE_MED": (150, 145, 138), "WHITE_HIGH": (248, 248, 240),
+    "BLUE_LOW": (0, 5, 75), "BLUE_MED": (0, 12, 148), "BLUE_HIGH": (5, 20, 248),
+    "PURPLE_LOW": (58, 0, 58), "PURPLE_MED": (125, 3, 125), "PURPLE_HIGH": (235, 5, 235),
+    "CYAN_LOW": (0, 60, 60), "CYAN_MED": (3, 128, 128), "CYAN_HIGH": (5, 242, 242),
 }
 
 
