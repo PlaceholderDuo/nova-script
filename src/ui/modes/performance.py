@@ -166,9 +166,15 @@ class PerformanceMode(Mode):
             self.osc_bridge.send(addr, value)
 
     def tick(self, delta_ms: float):
+        dirty = False
         if self._tuner_active:
             self._tuner_phase = (self._tuner_phase + delta_ms * 0.01) % (math.pi * 2)
-        self._render()
+            dirty = True
+        if self._hint_letter and time.monotonic() >= self._hint_expiry:
+            self._hint_letter = ""
+            dirty = True
+        if dirty:
+            self.mark_dirty()
 
     def _render(self):
         self.clear()

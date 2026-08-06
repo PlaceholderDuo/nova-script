@@ -112,6 +112,8 @@ class NovationController(ABC):
 
     def set_grid_color(self, x: int, y: int, color: LogicalColor):
         if 0 <= x < self.capabilities.grid_width and 0 <= y < self.capabilities.grid_height:
+            if self._grid_state[y][x] == color:
+                return
             self._grid_state[y][x] = color
             self.send_led(x, y, color)
 
@@ -121,6 +123,7 @@ class NovationController(ABC):
                 self.set_grid_color(x, y, LogicalColor.OFF)
 
     def refresh_grid(self):
+        """Force all cells to re-send to hardware. Use after reconnect."""
         for y in range(self.capabilities.grid_height):
             for x in range(self.capabilities.grid_width):
                 self.send_led(x, y, self._grid_state[y][x])

@@ -17,6 +17,11 @@ class Mode(ABC):
         self._last_action_time: float = 0.0
         self._page: int = 0
         self._num_pages: int = 1
+        self._needs_render: bool = True
+
+    def mark_dirty(self):
+        """Call when visual state changes. Triggers next render."""
+        self._needs_render = True
 
     def render_pages(self):
         """Light right-column buttons as page indicators.
@@ -50,7 +55,9 @@ class Mode(ABC):
         pass
 
     def tick(self, delta_ms: float):
-        pass
+        if self._needs_render:
+            self._needs_render = False
+            self._render()
 
     def is_debounced(self) -> bool:
         now = time.monotonic() * 1000
