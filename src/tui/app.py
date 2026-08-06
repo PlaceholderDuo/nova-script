@@ -157,6 +157,13 @@ class SettingsScreen(ModalScreen):
             with Horizontal(classes="setting-row"):
                 yield Static("Visual hints:", classes="setting-label")
                 yield Select(hints_options, prompt="ON" if hints_on else "OFF", value=hints_on, id="hints-select")
+            yield Static("")
+            yield Static("— ARP —")
+            arp_transpose = self._config.get("arp", {}).get("diatonic", True)
+            arp_transpose_options = [("Diatonic (in-key)", True), ("Chromatic (absolute)", False)]
+            with Horizontal(classes="setting-row"):
+                yield Static("Transpose mode:", classes="setting-label")
+                yield Select(arp_transpose_options, prompt="Diatonic" if arp_transpose else "Chromatic", value=arp_transpose, id="arp-transpose-select")
             yield Static(f"  Current profile: {self._profile_name}")
             yield Static("")
             with Horizontal():
@@ -181,6 +188,9 @@ class SettingsScreen(ModalScreen):
             if dc: ui["downbeat_color"] = str(dc)
             h = self.query_one("#hints-select", Select).value
             if h is not None: ui["hints_enabled"] = bool(h) if str(h) != "False" else False
+            arp = self._config.setdefault("arp", {})
+            at = self.query_one("#arp-transpose-select", Select).value
+            if at is not None: arp["diatonic"] = bool(at) if str(at) != "False" else False
             self.dismiss(self._config)
         elif event.button.id == "open-mixer":
             self.app.push_screen(MixerSettingsScreen(self._config))

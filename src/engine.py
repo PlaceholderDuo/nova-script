@@ -404,6 +404,12 @@ class Engine:
                 m = self.mode_manager._modes.get(mode_name)
                 if m and hasattr(m, "set_bpm"):
                     m.set_bpm(self._clock.bpm)
+            inst = self.mode_manager._modes.get("instrument")
+            if inst and hasattr(inst, "set_bpm"):
+                inst.set_bpm(self._clock.bpm)
+            if inst and hasattr(inst, "set_arp_transpose"):
+                transpose_cfg = self.config.get("arp", {})
+                inst.set_arp_transpose(transpose_cfg.get("diatonic", True))
             pm = self.mode_manager._modes.get("performance")
             if pm and hasattr(pm, "set_hints_config"):
                 ui = self.config.get("ui", {})

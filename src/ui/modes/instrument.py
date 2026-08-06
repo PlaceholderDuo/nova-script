@@ -89,6 +89,7 @@ class InstrumentMode(Mode):
         self._active_notes: dict[int, float] = {}
         self._pressed_pads: set[tuple[int, int]] = set()
         self._last_arp_progress: float = 0.0
+        self._arp_transpose_diatonic: bool = True
 
         self._a_held: bool = False
         self._editing_offset: bool = False
@@ -105,6 +106,9 @@ class InstrumentMode(Mode):
         self._bpm = bpm
         if self._arp_mode != self.ARP_OFF:
             self._arp_interval = 60.0 / bpm / 4.0
+
+    def set_arp_transpose(self, diatonic: bool):
+        self._arp_transpose_diatonic = diatonic
 
     @property
     def _scale(self) -> list[int]:
@@ -345,7 +349,6 @@ class InstrumentMode(Mode):
 
         pattern = _load_arp_pattern(self._arp_pattern_name)
         sorted_notes = sorted(self._active_notes.keys())
-
         if self._arp_mode == self.ARP_DOWN:
             sorted_notes.reverse()
 
@@ -354,11 +357,24 @@ class InstrumentMode(Mode):
 
         if sorted_notes:
             interval_idx = self._arp_step % len(pattern)
-            base_idx = interval_idx % len(sorted_notes)
-            note = sorted_notes[base_idx] + pattern[interval_idx]
-            self._send_note_on(note)
+            base_idx = sorted_notes[self._arp_step // len(pattern) % len(sorted_notes)]
+            offset = self._arp_offset_for_note(base_idx, pattern[interval_idx])
+            self._send_note_on(base_idx + offset)
 
         self._arp_step += 1
+
+    def _arp_offset_for_note(self, base_note: int, interval: int) -> int:
+        if not self._arp_transpose_diatonic:
+            return interval
+        note_in_octave = base_note % 12
+        octave = base_note // 12
+        s = self._scale
+        degree = next((i for i, si in enumerate(s)
+                       if (self._root_note + si) % 12 == note_in_octave), 0)
+        td = (degree + interval) % len(s)
+        octaves = (degree + interval) // len(s)
+        target = self._root_note + s[td] + (octave + octaves) * 12
+        return target - base_note
 
     def _render(self):
         self.clear()
