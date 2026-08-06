@@ -1,37 +1,114 @@
-# ARP Pattern Editor — Vision & Specification
+# ARP Pattern Editor — Vision & Specification v2
 
 ## Concept
 
-Edit ARP patterns entirely on the Launchpad grid — no computer required. Long-press the ARP Pattern button (E) in Instrument Mode to enter the editor. The 8×8 grid transforms into a sequencer-style pattern view where each column represents one step of the 8-step pattern, and each row represents a scale degree. The bottom row shows a beat-position chase LED synced to the BPM clock.
-
-## Goals
-
-1. **Zero-computer workflow.** Create, view, edit, and save ARP patterns directly on the Launchpad. No YAML, no JSON, no text editor.
-2. **Visual transparency.** The pattern is always fully visible on the grid. You can see the entire 8-step sequence at once.
-3. **Musical constraint.** Notes are constrained to the active scale. You can't play wrong notes — only arrange them.
-4. **Live preview.** The pattern plays as you edit, with a BPM-synced beat indicator showing current position.
-5. **Persistence.** Changes save back to the JSON pattern files automatically.
+Full on-Launchpad ARP pattern creation, editing, and library management. Enter via long-press of the ARP Pattern button (E) in Instrument Mode. The 8×8 grid becomes a dual-function editor: pattern note editing AND per-step note-length control. Patterns save to a 3-page library of 24 slots via long-press on A-H buttons. Pages navigated with right-column buttons G (up) and H (down).
 
 ---
 
-## Entry & Exit
+## Architecture Overview
 
-### Entering Edit Mode
-
-1. **Long-press** the ARP Pattern button (E, right column index 4) for ~500ms
-2. The E button begins rapid blinking (AMBER, 50% duty cycle at ~200ms period)
-3. The grid switches to pattern edit mode
-4. The ARP continues playing during edit — non-blocking
-
-### Exiting Edit Mode
-
-1. **Press E again** (short press) — returns to normal Instrument Mode
-2. The edited pattern is saved to the active pattern file
-3. The E button returns to its normal state LED
+```
+Instrument Mode
+    │
+    ├── Normal play (grid instrument)
+    │       │
+    │       └── Long-press E → enters ARP Edit Mode
+    │
+    └── ARP Edit Mode
+            │
+            ├── Grid: pattern editor (notes + beat chase)
+            ├── A-H buttons: long-press saves pattern to slot
+            ├── Top-1 button (GREEN): exit back to instrument mode
+            ├── E button (RED): note-length sub-mode
+            ├── G button: page up (wraps 1→2→3→1)
+            ├── H button: page down (wraps 3→2→1→3)
+            │
+            └── Note-Length Sub-Mode
+                    ├── Grid: per-step note-length bars (RED/OFF)
+                    ├── A-H buttons: set ALL steps to that length
+                    ├── Top-1 button (GREEN): back to ARP edit mode
+                    └── Press grid pad: set individual step length
+```
 
 ---
 
-## Grid Layout
+## ARP Pattern Library
+
+### 3 Pages × 8 Slots = 24 Patterns
+
+| Page | Slots | Right-LED G (7) | Right-LED H (8) | Navigation |
+|------|-------|-----------------|-----------------|------------|
+| **1** (default) | A-H = patterns 1-8 | AMBER | GREEN | Press H → page 2 |
+| **2** | A-H = patterns 9-16 | GREEN | GREEN | Press G → page 1, H → page 3 |
+| **3** | A-H = patterns 17-24 | GREEN | AMBER | Press G → page 2 |
+
+G button = page up, H button = page down. LEDs reflect available navigation directions:
+- AMBER = "can't go further this way" (at boundary)
+- GREEN = "can go this way" (more pages exist)
+
+### Slot LED Mapping (A-H buttons in ARP Edit Mode)
+
+| Button | Recommended Use |
+|--------|----------------|
+| A | Normal (default sequential — always present) |
+| B | Chordal (root-7th-3rd-5th — always present) |
+| C | Octaves (always present) |
+| D-H | User patterns (5 slots per page × 3 pages = 15 custom slots) |
+
+The 3 factory patterns (normal, chordal, octaves) occupy slots A, B, C on page 1. They CAN be overwritten via long-press save. Factory defaults are restored on `_init_defaults()` if the JSON file is deleted.
+
+### Slot LEDs (Normal State)
+
+- Occupied slot (has pattern): AMBER_LOW (20%)
+- Empty slot: OFF
+- Currently selected slot: AMBER_HIGH (80%)
+- During save (1s blink): GREEN blinking
+
+### Saving a Pattern
+
+1. Long-press any A-H button (500ms) while in ARP Edit Mode
+2. Button blinks GREEN rapidly for 1 second
+3. Pattern is saved to that slot as a JSON file
+4. Blink stops → button shows AMBER_HIGH (now selected)
+
+**File naming convention:**
+```
+config/arp_patterns/
+├── normal.json       (factory, slot 1)
+├── chordal.json      (factory, slot 2)
+├── octaves.json      (factory, slot 3)
+├── user_04.json      (slot 4, page 1)
+├── user_05.json      (slot 5, page 1)
+├── ...
+├── user_24.json      (slot 24, page 3)
+```
+
+15 user slots + 3 factory slots = 18 possible files. Slots 1-8 (page 1), 9-16 (page 2), 17-24 (page 3). Empty slots have no file. Factory slots always have files.
+
+### JSON Format (unchanged)
+
+```json
+{
+    "name": "my_pattern",
+    "description": "User-created pattern",
+    "intervals": [0, 2, 4, 5, 7, 4, 2, 0],
+    "lengths": [5, 5, 3, 5, 5, 5, 5, 5]
+}
+```
+
+- `intervals`: 0-8 values. Each value is a semitone offset from the current ARP step's note. -1 = skip.
+- `lengths`: 0-8 values (one per interval entry). Each value is 1-8 corresponding to the note-length level. If absent or shorter than `intervals`, defaults to 5 (standard 1/8 note).
+
+### State Persistence
+
+- **ARP on/off state**: Toggling ARP OFF remembers which pattern was active. Toggling ARP ON resumes with the same pattern. This survives mode switches (leaving instrument mode and returning).
+- **Last active pattern**: Stored in instrument mode's `_last_arp_pattern_name`. Default: "normal".
+- **Last page**: Stored in `_arp_page`. Reopens to last-used page. Default: page 1.
+
+---
+
+## ARP Edit Mode — Grid Layout
 
 ```
   col: 0    1    2    3    4    5    6    7
@@ -43,151 +120,283 @@ row  ┌────┬────┬────┬────┬────
  3   │ 3rd│ 3rd│ 3rd│ 3rd│ 3rd│ 3rd│ 3rd│ 3rd│  ← 3rd scale degree
  2   │ 2nd│ 2nd│ 2nd│ 2nd│ 2nd│ 2nd│ 2nd│ 2nd│  ← 2nd scale degree
  1   │ R  │ R  │ R  │ R  │ R  │ R  │ R  │ R  │  ← Root / 1st degree
- 0   │→   │ ·  │ ·  │ ·  │ ·  │ ·  │ ·  │ ·  │  ← Beat indicator
+ 0   │→   │ ·  │ ·  │ ·  │ ·  │ ·  │ ·  │ ·  │  ← Beat position indicator
      └────┴────┴────┴────┴────┴────┴────┴────┘
-       step step step step step step step step
-        0     1     2     3     4     5     6     7
+       S0    S1    S2    S3    S4    S5    S6    S7   (steps)
 ```
 
-- **Row 0 (bottom):** Beat position indicator. One LED chases across 8 columns in sync with BPM. Current position = AMBER_HIGH. Other positions = AMBER_LOW (40%). Each step = 1/8 of a bar (1/32 note at 4/4).
-- **Rows 1-7:** One row per scale degree. Row 1 = root, row 7 = 7th scale degree.
-- **Active note:** Set = AMBER_HIGH (or the note color). Unset = OFF.
-- **Unavailable scale degrees:** If the scale has fewer than 7 notes (e.g., blues = 6), unused rows are OFF.
+- **Row 0**: Beat chase. Current step = AMBER_HIGH. Others = AMBER_LOW.
+- **Rows 1-7**: Scale degrees. AMBER_HIGH = note set. OFF = skip.
+- **Note**: One lit pad per column.
+- **Unused scale degrees** (blues = 6 notes): top rows OFF. Chromatic → locks to Major for editing.
+
+### Beat Chase Timing
+
+Chase speed = BPM. Each step duration = 1/2 beat (8 steps per bar at 4/4).
+
+At 120 BPM:
+- Beat period = 500ms
+- Step period = 250ms (1/8 note)
+- Full bar = 8 steps = 4 beats = 2 seconds
+
+The chase LED advances from column 0→1→2...→7→0 continuously while in edit mode. Uses elapsed time since entering edit mode (not absolute BPM sync) to avoid phase issues.
 
 ---
 
-## Note Value per Cell
+## Note-Length Sub-Mode
 
-Each cell at column `x`, row `y` (where y ≥ 1) represents:
+Entered by pressing E (RED LED) while in ARP Edit Mode.
+
+### Grid Layout
 
 ```
-scale_degree = y - 1    (0 = root, 6 = 7th)
-interval = scale[scale_degree]  (semitones from root)
+  col: 0    1    2    3    4    5    6    7
+row  ┌────┬────┬────┬────┬────┬────┬────┬────┐
+ 7   │  ■ │    │    │  ■ │    │    │    │  ■ │  ← Level 8: Legato
+ 6   │  ■ │  ■ │    │  ■ │    │    │  ■ │  ■ │  ← Level 7: 1/4 note
+ 5   │  ■ │  ■ │    │  ■ │  ■ │    │  ■ │  ■ │  ← Level 6: Dotted 1/8
+ 4   │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ← Level 5: 1/8 note (default)
+ 3   │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ← Level 4: 1/8 triplet
+ 2   │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ← Level 3: 1/16 note
+ 1   │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ← Level 2: 1/16 triplet
+ 0   │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ■ │  ← Level 1: 1/32 note
+     └────┴────┴────┴────┴────┴────┴────┴────┘
+       S0    S1    S2    S3    S4    S5    S6    S7
 ```
 
-For Major scale [0, 2, 4, 5, 7, 9, 11], root=C:
-| Row | Degree | Interval | Example (C root) |
-|-----|--------|----------|------------------|
-| 7   | 7th    | 11       | B                |
-| 6   | 6th    | 9        | A                |
-| 5   | 5th    | 7        | G                |
-| 4   | 4th    | 5        | F                |
-| 3   | 3rd    | 4        | E                |
-| 2   | 2nd    | 2        | D                |
-| 1   | Root   | 0        | C                |
+- **Lit pads**: RED_HIGH — shows the note-length "bar" for each step
+- **Unlit pads**: OFF
+- **Taller bars** = longer notes
+- **All 8 columns represent the 8 steps** — same as pattern editor layout
 
-**Chromatic mode behavior:** When the instrument's scale is Chromatic, the ARP locks to the **Major scale** for display and editing purposes. All 7 rows are available. The user sets intervals relative to the Major scale degrees, which are then mapped to the actual chromatic notes during playback.
+### Note Length Values
 
-**Blues scale (6 notes):** Row 7 (7th degree) is OFF and unavailable. Only rows 1-6 accept input.
+| Level | Musical Duration | Relative to Step | Performance Feel |
+|-------|-----------------|-----------------|------------------|
+| 1 | 1/32 note | 25% of step | Ultra-staccato — click |
+| 2 | 1/16 triplet | 33% of step | Very short — tight |
+| 3 | 1/16 note | 50% of step | Standard short |
+| 4 | 1/8 triplet | 67% of step | Medium-short |
+| 5 | 1/8 note | 100% of step | **Full step (default)** |
+| 6 | Dotted 1/8 | 150% of step | Overlaps slightly |
+| 7 | 1/4 note | 200% of step | Long — smooth |
+| 8 | Legato | No gap | Seamless — tied |
+
+Step duration at default ARP rate (1/8 note at current BPM). At 120 BPM: step = 250ms.
+
+Lengths 6-8 span multiple steps, creating a legato effect where notes overlap. The MIDI note stays on across step boundaries.
+
+### Setting Note Lengths
+
+**Per-step (individual):**
+- Press a pad at (x, y) → sets step x to length y+1 (1=bottom, 8=top)
+- The column redraws to show the new bar height
+
+**All steps (global):**
+- Press right-column A-H button → sets ALL 8 steps to that button's level (0=A→1, 7=H→8)
+- Visual: all 8 columns snap to the same height
+
+### Colors (Note-Length Mode ONLY)
+
+| Element | Color |
+|---------|-------|
+| Lit pad (bar) | RED_HIGH |
+| Unlit pad | OFF |
+| E button | RED_HIGH |
+| Top-1 button | GREEN_HIGH (go back) |
+| All other top row | OFF |
+| Right column A-H | RED_HIGH (global set buttons) |
+
+### Entry Animation
+
+When entering note-length mode, the grid displays scrolling text **"LENGTH"** in **RED_HIGH** for 1 second before showing the bar-graph. This provides visual confirmation of what mode you're in. The scrolling text uses the standard 5×5 font, scrolling from right to left across the grid at ~150ms per pixel. After 1s, the text fades out and the bar-graph appears.
+
+### Navigation
+
+- **Top-1 button** (GREEN): Exit note-length mode → return to ARP edit mode
+- **Grid pad press**: Set individual note length
+- **Right column A-H press**: Set global note length for all steps
 
 ---
 
-## Interaction
+## Edit Mode — Control Button Map
 
-### Setting a Note (press unlit pad)
+### Top Row (Buttons 1-8)
 
-1. Press pad at (column, row) where row ≥ 1 and the pad is OFF
-2. Pad lights up **AMBER_HIGH**
-3. Any previously lit pad in the same column turns OFF
-4. The pattern updates: `intervals[column] = scale[row-1]`
-5. The ARP immediately plays the updated pattern on the next cycle
+| Button | LED | Action |
+|--------|-----|--------|
+| **1** | GREEN_HIGH | Exit ARP edit → return to Instrument Mode |
+| 2-8 | OFF | Unused in edit mode |
 
-### Clearing a Note (press lit pad)
+### Right Column (A-H)
 
-1. Press pad at (column, row) where row ≥ 1 and the pad is AMBER_HIGH
-2. Pad turns OFF
-3. The pattern updates: `intervals[column] = -1` (representing a skip/rest in the pattern)
-4. The ARP skips this column on the next cycle
-
-### Beat Indicator Behavior
-
-- Chases from column 0 → column 7, then wraps to column 0
-- Timing: each step = BPM period / 8 (e.g., 120 BPM = 62.5ms per step)
-- Current step column lights AMBER_HIGH
-- All other columns light AMBER_LOW (dim orange)
-- The chase runs continuously while in edit mode
-
-### Saving
-
-- Pattern is saved **automatically** on exit to the active pattern file
-- File location: `config/arp_patterns/{name}.json`
-- Format: same JSON structure with `intervals` array
-- Skip/rest entries are excluded from the saved pattern (array length may be < 8)
+| Button | LED (edit mode) | Action (short press) | Action (long press) |
+|--------|-----------------|---------------------|---------------------|
+| **A** | AMBER_LOW/HIGH | Select pattern in slot A | Save current to slot A |
+| **B** | AMBER_LOW/HIGH | Select pattern in slot B | Save current to slot B |
+| **C** | AMBER_LOW/HIGH | Select pattern in slot C | Save current to slot C |
+| **D** | AMBER_LOW/HIGH | Select pattern in slot D | Save current to slot D |
+| **E** | RED_HIGH | Enter note-length mode | — |
+| **F** | AMBER_LOW/HIGH | Select pattern in slot F | Save current to slot F |
+| **G** | GREEN/AMBER | Page up | — |
+| **H** | GREEN/AMBER | Page down | — |
 
 ---
 
-## Color Scheme
+## Complete Interaction Flow
 
-| State | Color | Meaning |
-|-------|-------|---------|
-| Beat indicator (current) | AMBER_HIGH | Currently playing step |
-| Beat indicator (other) | AMBER_LOW | Future/past steps |
-| Active note | AMBER_HIGH | Note set at this step |
-| Unset position | OFF | No note at this step |
-| Unavailable degree | OFF | Scale has fewer than 7 notes |
-| E button (blinking) | AMBER | 200ms period, 50% duty — edit mode active |
+```
+Instrument Mode (normal grid instrument)
+    │
+    ├── Short press E: cycle ARP pattern (normal → chordal → octaves → normal)
+    │
+    └── Long press E (500ms): enter ARP Edit Mode
+            │
+            ├── Grid: pattern editor visible
+            ├── Beat chase running
+            ├── A-H: select/save patterns, page nav
+            ├── Top-1: exit to instrument mode
+            │
+            ├── Short press A-H: select different pattern
+            │       └── Grid updates with new pattern's notes
+            │
+            ├── Long press A-H: save pattern to slot
+            │       └── Button blinks GREEN for 1s → saved
+            │
+            ├── Press pad on grid: set/clear note for that step
+            │       └── ARP preview plays updated pattern
+            │
+            ├── Press G/H: change page
+            │       └── A-H LEDs update to show new page's patterns
+            │
+            └── Press E (RED): enter Note-Length Mode
+                    │
+                    ├── Grid: bar-graph showing per-step lengths
+                    ├── Top-1: back to ARP Edit Mode
+                    ├── A-H: set ALL steps to this length
+                    └── Press pad: set individual step length
+```
+
+---
+
+## File Structure
+
+```
+config/arp_patterns/
+├── normal.json          Factory: sequential (slot 1)
+├── chordal.json         Factory: chord-tone (slot 2)
+├── octaves.json         Factory: octave jumps (slot 3)
+├── user_04.json         User pattern (slot 4)
+├── user_05.json         User pattern (slot 5)
+├── ...
+└── user_24.json         User pattern (slot 24)
+
+src/ui/modes/instrument.py    — ARP edit mode + note-length mode
+```
 
 ---
 
 ## Assumptions & Risks
 
-### Assumption 1: Long-press on E is detectable and doesn't conflict with normal press
-**Risk:** The E button's normal behavior is to cycle through ARP patterns (1→2→3). A long press must be distinguished from a short press.
-**Mitigation:** Use the existing long-press infrastructure in Mode base (500ms threshold). On release, check `resolve_press()` — if "long", enter edit mode. If "short", cycle pattern normally.
+### A1: Long-press on E doesn't conflict with short press (pattern cycling)
+**Risk:** Medium. The same button triggers two behaviors based on hold duration.
+**Test:** Virtualizer — send short press (< 500ms), verify pattern cycles. Send long press (> 500ms), verify edit mode entered.
+**Mitigation:** Mode base long-press infrastructure already exists (500ms threshold, `track_press`/`resolve_press`).
 
-### Assumption 2: The ARP can continue playing while the grid is in edit mode
-**Risk:** The ARP uses `_active_notes` and `_advance_arp()` which read from the pattern. If we're editing the pattern while ARP is running, we need to handle concurrent modification safely.
-**Mitigation:** The pattern intervals are small integers (an array of ≤8 values). Use a copy-on-write pattern: the editor modifies a local `_edit_intervals` list, and `_advance_arp()` reads from the same list. The list is written atomically (single index assignment). Python's GIL ensures no race condition in the asyncio event loop (single-threaded).
+### A2: Saving to slot via long-press on A-H doesn't conflict with slot selection (short press on A-H)
+**Risk:** Medium. Same dual-behavior pattern as E button.
+**Test:** Virtualizer — short press A → selects pattern. Long press A → saves pattern.
+**Mitigation:** Same long-press infrastructure. Save triggers only on "long" resolution.
 
-### Assumption 3: The beat indicator chase can be rendered at the right speed
-**Risk:** The chase must be BPM-synced and visually smooth. At 120 BPM, each step is 62.5ms — frame updates must be fast enough to avoid stutter.
-**Mitigation:** The engine's tick loop already runs at up to 100Hz (10ms timeout). A 62.5ms step duration has ~6 ticks per step, which is smooth enough for a visual chase. We track elapsed time and compute step position from BPM.
+### A3: 24 pattern files can be managed without naming collisions
+**Risk:** Low. Fixed naming convention (`user_04.json` through `user_24.json`) prevents collisions.
+**Test:** Create all 24 patterns programmatically. Verify each file is unique.
+**Mitigation:** Slot-based naming, not user-named. Factory slots (1-3) are protected.
 
-### Assumption 4: All 7 scale rows fit within the 8×8 grid
-**Risk:** Rows 1-7 use 7 of 8 available rows, leaving only row 0 for the beat indicator. This works for 8×8.
-**Verification:** Grid is 8 high. Row 0 = beat, rows 1-7 = scale degrees. Fits exactly. ✓
+### A4: Note-lengths 6-8 (spanning multiple steps) don't cause MIDI note pileups
+**Risk:** Medium. A note-off for step 3 might fire while step 4's note-on (from length 7) is still active.
+**Test:** Virtualizer — set all steps to length 7, watch MIDI log for duplicate note-ons or missing note-offs.
+**Mitigation:** Track active MIDI notes per step. Before sending note-on for step N, send note-off for step N's previous note. Lengths that span steps keep the note-on active until the length expires.
 
-### Assumption 5: Patterns with < 8 entries (skips) save and load correctly
-**Risk:** The JSON format has a fixed-length `intervals` array. Skips in the pattern create shorter arrays.
-**Mitigation:** The `intervals` array is variable-length (0-8 entries). When loading, pad missing entries with skips. When saving, trim trailing skips. The ARP playback engine already handles variable-length patterns via `len(intervals)`.
+### A5: Beat chase stays synced with no drift over extended editing sessions
+**Risk:** Low. Uses elapsed time modulo step duration. No cumulative error.
+**Test:** Virtualizer — stay in edit mode for 5 minutes at 120 BPM. Verify chase position matches expected position within 1 step.
+**Mitigation:** Position computed as `int((now - entry_time) / step_duration) % 8`. No drift possible.
 
-### Assumption 6: Chromatic scale locking to Major for ARP editing is intuitive
-**Risk:** Users in Chromatic mode might expect all 12 notes to be available.
-**Mitigation:** Display a brief hint ("M" in GREEN) when entering edit mode in Chromatic scale, indicating the ARP is locked to Major scale for editing. This matches real hardware behavior on Akai Force and similar devices that constrain ARP to a scale even in chromatic note mode.
-
----
-
-## Implementation Plan
-
-### Phase 1: Core Editor UI (no playback during edit)
-1. Add `_arp_edit_mode` flag to InstrumentMode
-2. Detect long-press on E button → enter edit mode
-3. Render the edit grid (beat indicator + scale rows)
-4. Handle pad presses (set/clear notes in pattern)
-5. Exit on E press → save pattern, return to instrument mode
-
-### Phase 2: Live Playback During Edit
-1. While in edit mode, continue advancing the ARP
-2. Beat indicator chases in sync with the ARP's own step counter
-3. Pattern changes take effect immediately on next ARP cycle
-
-### Phase 3: Visual Polish
-1. E button rapid blink (200ms period)
-2. Dim beat indicators for non-current steps
-3. Color-coded scale rows (optional: root row slightly different color)
-4. Hint display on entry if in Chromatic mode
+### A6: All grid interactions are discoverable without labels
+**Risk:** Medium. The MK1 has no screen — users must learn the button mappings.
+**Test:** Virtualizer — verify visual hints (blinking LEDs, color changes) provide enough feedback.
+**Mitigation:** Clear color language: GREEN = "go/enter/select", RED = "danger/note-length sub-mode", AMBER = "navigation/page", blinking = "saving." Top-1 always lit GREEN as the "exit" affordance.
 
 ---
 
-## File Changes (anticipated)
-- `src/ui/modes/instrument.py` — Add edit mode state, render logic, interactions
-- `config/arp_patterns/*.json` — Updated by editor on save
+## Test Plan (Virtualizer-Based)
+
+All tests run against virtualizer + nova-script. No hardware needed.
+
+### Test Suite 1: Edit Mode Entry/Exit
+- [ ] Long-press E → enters edit mode (E blinks AMBER)
+- [ ] Grid shows pattern editor layout (beat chase + scale rows)
+- [ ] Short press Top-1 → exits to instrument mode
+- [ ] Short press E (in edit mode) → does nothing (prevent accidental exit)
+
+### Test Suite 2: Pattern Editing
+- [ ] Press unlit pad → pad lights AMBER_HIGH, pattern updates
+- [ ] Press lit pad → pad clears (OFF), becomes skip
+- [ ] Only one pad per column can be lit
+- [ ] Beat chase runs continuously, synchronized
+- [ ] Pattern changes audible via virtual MIDI output
+
+### Test Suite 3: Pattern Save/Load
+- [ ] Long-press A → A blinks GREEN 1s → saves to `user_04.json`
+- [ ] Short-press B → selects pattern from slot B, grid updates
+- [ ] Empty slot (no file) → shows empty grid on select
+- [ ] Factory slots A/B/C always have patterns
+- [ ] Custom slot D → save pattern → exit → re-enter → press D → pattern loads
+
+### Test Suite 4: Page Navigation
+- [ ] Page 1: G=AMBER, H=GREEN
+- [ ] Press H → page 2: G=GREEN, H=GREEN
+- [ ] Press H → page 3: G=GREEN, H=AMBER
+- [ ] Press G → back to page 2
+- [ ] Page wraps correctly (page 3 + H → page 1)
+- [ ] Exit + re-enter → remembers last page
+
+### Test Suite 5: Note-Length Mode
+- [ ] Press E (in edit mode) → enters note-length mode
+- [ ] Grid shows bar-graph (RED bars at correct heights)
+- [ ] All columns show current pattern's note lengths
+- [ ] Press pad (x, y) → step x shows bar of height y+1
+- [ ] Press A-H → all steps set to that level
+- [ ] Top-1 → returns to edit mode
+- [ ] All RED/OFF (no other colors in note-length mode)
+
+### Test Suite 6: State Persistence
+- [ ] Select pattern in slot D → exit instrument → re-enter → ARP still on pattern D
+- [ ] Toggle ARP OFF → cycle instrument mode off → toggle ARP ON → same pattern playing
+- [ ] Page 2 selected → exit → re-enter → page 2 still open
 
 ---
 
-## Questions to Resolve
+## Virtualizer Debug Panel (Enhanced)
 
-1. **Should the pattern editor work in scales with < 7 notes?** Current plan: yes, unused rows are OFF and unresponsive.
-2. **Should the saved pattern retain skip positions?** Current plan: yes, skips are excluded from the JSON intervals array.
-3. **Should pressing a pad produce sound (MIDI note) or just set the pattern?** Current plan: just set the pattern. The ARP playback handles sound. This avoids audio clutter during editing.
-4. **What happens if user exits edit mode with an empty pattern (all skips)?** Restore the previous pattern from memory (don't save empty).
+To enable autonomous debugging without hardware:
+
+### Additions to virtualizer HTML:
+1. **Debug panel toggle** — keyboard shortcut `D` or button
+2. **Grid text dump** — ASCII representation with LogicalColor names:
+   ```
+   [ROW 7]  OFF       AMBER_HIGH  OFF  ...
+   [ROW 6]  RED_HIGH   OFF         OFF  ...
+   ...
+   ```
+3. **MIDI message log** — last 200 messages with timestamps, decoded:
+   ```
+   18:03:10.123  Note ON  ch1  note=0   vel=0x33  → AMBER_HIGH  grid(0,7)
+   18:03:10.124  Note ON  ch1  note=16  vel=0x01  → RED_LOW     grid(0,6)
+   18:03:10.125  CC       ch1  cc=104  val=0x33  → AMBER_HIGH  top_row[0]
+   ```
+4. **Timing display** — BPM, beat count, ms since mode entry, message rate
+5. **Color matrix** — 8×8 grid showing LogicalColor name in each cell
+6. **Frame capture** — press key to freeze and download current state as JSON
+7. **Message rate graph** — simple bar showing msgs/sec over last 5 seconds
