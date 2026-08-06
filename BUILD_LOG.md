@@ -1988,6 +1988,38 @@ Engine connects to virtualizer WebSocket and sends `{mode, page, subpage}` via `
 ### Button Reference Document
 [`docs/BUTTON_REFERENCE.md`](docs/BUTTON_REFERENCE.md) — 300-line master reference: every button, LED, grid interaction, and setting across all modes.
 
+### OSC Scrolling Text Display
+Rewrote the HUD overlay system for smooth scrolling text messages received via OSC. When Reaper (or any OSC sender) sends `/nova/display/message "Karaoke"`, the text scrolls horizontally across the 8×8 grid using the 5×5 pixel font at sub-character precision.
+
+**Scrolling engine:** Text is rendered as a continuous pixel strip. Each character occupies 5 pixel columns + 1 gap column = 6 "character-width" pixels. The scroll position advances by 1 pixel per engine tick at a rate of `5.0 / scroll_speed_ms` pixels per ms. At the default 60ms/char, each pixel advances every 12ms — smooth at 10Hz tick rate.
+
+**Behavior:**
+- Text scrolls once from right to left, then auto-dismisses (no looping)
+- Surrounding pads are cleared (OFF) — display is clean, not composited
+- Any button press immediately dismisses the message (press is consumed)
+- Pressing during scroll stops the text and returns to active mode
+
+**OSC integration path:**
+```
+Reaper → UDP :8000 → nova-script OSC server :9001
+```
+Route: `/nova/display/message` with a string argument. The engine's `_on_osc_message` routes `display_message` type to `overlay.trigger_hud(text=...)`.
+
+**How to use with Reaper:**
+1. Install ReaPack + `ReaScript Lua` in Reaper
+2. Create a ReaScript action:
+   ```lua
+   reaper.OscLocalMessageToHost("/nova/display/message Karaoke")
+   ```
+   Or use ReaperOSC config with pattern:
+   ```
+   ACTION i/action t/action/@ s/action/s/@/display/message
+   ```
+3. Bind to a keyboard shortcut or trigger from a marker/region
+4. Send any text string — nova-script displays it on the Launchpad
+
+**TUI setting:** Settings → OSC → "Msg char speed (ms):" — enter 10-500. Default 60ms/char (fast but readable). Lower = faster scroll, higher = slower/more readable.
+
 ### BPM LED Fix
 Flash 80ms→120ms. Removed dead code in `_get_downbeat_color`.
 
@@ -1995,7 +2027,9 @@ Flash 80ms→120ms. Removed dead code in `_get_downbeat_color`.
 - `docs/ARP_VISION_DOC.md` — New: ARP editor spec
 - `docs/BUTTON_REFERENCE.md` — New: mode button reference
 - `src/ui/modes/instrument.py` — Hold/ARP fixes, diatonic ARP, key, minor scale, hints
-- `src/engine.py` — Virt WS sync, BPM fix, dead code, config pass-through
+- `src/engine.py` — Virt WS sync, BPM fix, dead code, OSC scroll speed config pass-through
+- `src/ui/overlay_manager.py` — Scrolling text HUD, pixel-level render, non-blocking dismiss
+- `src/tui/app.py` — OSC scroll speed Input setting
 - `tools/novation-virtualizer.py` — set_info action, mode fields
 - `tools/novation-virtualizer.html` — Mode-aware info panel
 - `docs/INSTRUMENT_MODE.md` — Hint table update
