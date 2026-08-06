@@ -701,65 +701,110 @@ function render() {
 
 function updateInfoPanel() {
   const panel = $('info-panel');
-  if (!state || !state.type) { panel.style.display = 'none'; return; }
+  if (!state) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
 
-  const type = state.type;
+  const mode = state.mode || '';
+  const page = state.page || '';
   const rightCol = state.right_col || [];
-  const topRow = state.top_row || [];
-
   let html = '';
 
-  // Detect mode from LED patterns
-  const isScreensaver = rightCol.every((c, i) => i < 3 ? c !== 'OFF' : c === 'OFF');
+  const HELP = {
+    'performance': {
+      title: 'Performance Mode',
+      right: [
+        ['A', 'Page indicator (current)'],
+        ['B', 'Page indicator (page 2)'],
+        ['C-H', 'Unused'],
+      ],
+      grid: 'Row 7: Track mutes (GREEN=active, AMBER=track, RED=muted). Rows 1-6: FX state. Top row 1-8: toggle track mutes. Right 1-5: FX toggles.'
+    },
+    'instrument': {
+      title: 'Instrument Mode',
+      right: [
+        ['A', 'Notes / Chords'],
+        ['B', 'Scale (Major → Blues → Chromatic)'],
+        ['C', 'Hold (toggle)'],
+        ['D', 'ARP (OFF → Up → Down)'],
+        ['E', 'ARP Pattern (1 → 2 → 3)'],
+        ['F-H', 'Unused'],
+      ],
+      grid: '8×8 scale-mapped instrument. RED=root notes, GREEN=pressed, AMBER=scale notes. Hold A for row offset overlay.'
+    },
+    'arp_edit': {
+      title: 'ARP Edit Mode',
+      right: [
+        ['A-C', 'Factory patterns (read-only)'],
+        ['D', 'User pattern (press=load, hold=save)'],
+        ['E', 'Note-length mode'],
+        ['F', 'User pattern'],
+        ['G', 'Page up'],
+        ['H', 'Page down'],
+      ],
+      grid: 'Row 0: Beat chase (AMBER). Rows 1-7: Scale degrees. Press pad=set note. Press lit pad=clear. Top-1: exit.'
+    },
+    'clip_launcher': {
+      title: 'Clip Launcher',
+      right: [['A-B', 'Page indicators']],
+      grid: '8 tracks × 7 clips. Press slot=launch, press playing=stop. AMBER=empty, GREEN=playing, RED=stopped.'
+    },
+    'sequencer': {
+      title: 'Sequencer',
+      right: [['A-B', 'Page indicators']],
+      grid: '7 rows × 16 steps. Press pad=toggle step. Row 7=transport controls.'
+    },
+    'mixer': {
+      title: 'Mixer',
+      grid: '8 tracks × 7-row vertical faders. Press pad=set level. Bottom=0%, top=100%. Right col=bank/mute.'
+    },
+    'menu': {
+      title: 'Menu',
+      grid: '2×2 colored blocks: PERF/CLIP/SEQ/MIX. Press block=switch mode. Top row 1-5 also mode shortcuts.'
+    },
+    'screensaver': {
+      title: 'Screensaver',
+      right: [
+        ['A', 'Heart'],
+        ['B', 'Waves'],
+        ['C', 'Glimmer'],
+        ['D-H', 'Reserved'],
+      ],
+      grid: 'Press any grid pad or top row button to dismiss. First press consumed, second acts.'
+    },
+  };
 
-  if (isScreensaver) {
-    html = '<h3>Screensaver</h3>';
-    const modes = ['Heart', 'Waves', 'Glimmer'];
-    html += '<h4>Right column — modes</h4>';
-    modes.forEach((m, i) => {
-      const color = rightCol[i] || 'OFF';
-      html += renderButtonItem(m, color);
-    });
-    html += '<hr><p>Press any grid pad to dismiss screensaver.</p>';
-
-  } else if (rightCol[0] && rightCol[1] && rightCol[4]) {
-    // Instrument mode: A=Notes/Chords, B=Scale, E=ARP Pattern
-    html = '<h3>Instrument Mode</h3>';
-    html += '<h4>Right column controls</h4>';
-    html += renderButtonItem(rightCol[0], 'Notes' + (rightCol[0].includes('AMBER') ? ' → Chords' : ''), rightCol[0]);
-    html += renderButtonItem(rightCol[1], 'Scale', rightCol[1]);
-
-    const scaleCol = rightCol[1];
-    if (scaleCol && scaleCol.includes('GREEN')) html += '<span class="item">  <span class="dot-inline" style="background:lime"></span> Major</span><br>';
-    if (scaleCol && scaleCol.includes('AMBER')) html += '<span class="item">  <span class="dot-inline" style="background:#ff9b06"></span> Blues</span><br>';
-    if (scaleCol && scaleCol.includes('RED')) html += '<span class="item">  <span class="dot-inline" style="background:#f52608"></span> Chromatic</span><br>';
-
-    html += '<hr><h4>Grid</h4>';
-    html += '<p>8×8 scale-mapped instrument. Press pads to play notes in the current scale. RED=root notes, GREEN=pressed, AMBER=scale notes.</p>';
-
-  } else if (rightCol[0] && rightCol[1]) {
-    // Performance mode: A/B page indicators
-    html = '<h3>Performance Mode</h3>';
-    html += '<h4>Grid row 7 (bottom)</h4>';
-    html += '<p>Track mute indicators. GREEN=active, AMBER=track, RED=muted.</p>';
-    html += '<h4>Grid rows 1-6</h4>';
-    html += '<p>FX state. Press right column 1-5 to toggle.</p>';
+  const info = HELP[mode] || HELP['performance'];
+  html = '<h3>' + info.title + '</h3>';
+  if (page && mode === 'instrument' && page === 'offset_select') {
+    html += '<p style="color:#f9a03f">Row offset overlay active. Tap top row 1-5 to select offset.</p>';
+  }
+  if (page && mode === 'screensaver') {
+    html += '<p style="color:#f9a03f">Active mode: ' + ['Heart', 'Waves', 'Glimmer'][parseInt(page) || 0] + '</p>';
+  }
+  if (page && mode === 'arp_edit') {
+    html += '<p style="color:#f9a03f">' + page.replace('_', ' ') + '</p>';
   }
 
+  if (info.right) {
+    html += '<h4>Right column</h4>';
+    info.right.forEach(([name, desc]) => {
+      const idx = name.charCodeAt(0) - 65;
+      const color = rightCol[idx] || 'OFF';
+      const rgb = LED_COLORS[color] || LED_COLORS.OFF;
+      html += '<span class="item"><span class="dot-inline" style="background:rgb('+rgb.join(',')+')"></span> ' +
+              '<b>' + name + '</b>: ' + desc + '</span><br>';
+    });
+  }
+
+  html += '<h4>Grid</h4><p>' + (info.grid || '') + '</p>';
   html += '<hr><h4>Top row shortcuts</h4>';
   html += '<p>1=Performance  2=Clip  3=Seq  4=Mix  5=Instrument</p>';
 
   if (state.connected) {
-    html += '<hr><p style="color:#0a2">MIDI port active</p>';
+    html += '<p style="color:#0a2">MIDI active</p>';
   }
 
   panel.innerHTML = html;
-}
-
-function renderButtonItem(name, color) {
-  const rgb = LED_COLORS[color] || LED_COLORS.OFF;
-  return '<span class="item"><span class="dot-inline" style="background:rgb('+rgb.join(',')+')"></span> ' + name + '</span><br>';
 }
 
 // ── Controls ─────────────────────────────────────────────────────────────

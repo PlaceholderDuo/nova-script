@@ -16,20 +16,23 @@ logger = logging.getLogger(__name__)
 
 SCALES: dict[str, list[int]] = {
     "major":      [0, 2, 4, 5, 7, 9, 11],
+    "minor":      [0, 2, 3, 5, 7, 8, 10],
     "blues":      [0, 3, 5, 6, 7, 10],
     "chromatic":  list(range(12)),
 }
 
 CHORD_PATTERNS: dict[str, list[int]] = {
     "major":      [0, 4, 7],
+    "minor":      [0, 3, 7],
     "blues":      [0, 3, 7, 10],
     "chromatic":  [0, 4, 7],
 }
 
-SCALE_NAMES = ["major", "blues", "chromatic"]
+SCALE_NAMES = ["major", "minor", "blues", "chromatic"]
 SCALE_COLORS: dict[str, LogicalColor] = {
     "major": LogicalColor.GREEN_HIGH,
-    "blues": LogicalColor.AMBER_HIGH,
+    "minor": LogicalColor.AMBER_HIGH,
+    "blues": LogicalColor.RED_HIGH,
     "chromatic": LogicalColor.RED_HIGH,
 }
 
@@ -65,10 +68,13 @@ class InstrumentMode(Mode):
     CTRL_HOLD = 2
     CTRL_ARP = 3
     CTRL_ARP_PAT = 4
+    CTRL_KEY = 5
 
     ARP_OFF = "off"
     ARP_UP = "up"
     ARP_DOWN = "down"
+
+    KEY_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
     def __init__(self, grid, controller, config: dict | None = None, midi_manager=None):
         super().__init__("instrument", grid, controller)
@@ -183,6 +189,8 @@ class InstrumentMode(Mode):
                 self._cycle_arp()
             elif idx == self.CTRL_ARP_PAT:
                 self._cycle_arp_pattern()
+            elif idx == self.CTRL_KEY:
+                self._cycle_key()
 
     def tick(self, delta_ms: float):
         now = time.monotonic()
@@ -243,9 +251,17 @@ class InstrumentMode(Mode):
         current = names.index(self._scale_name)
         next_idx = (current + 1) % len(names)
         next_name = names[next_idx]
-        hint = {"major": "S", "blues": "B", "chromatic": "C"}[next_name]
+        hint = {"major": "S", "minor": "m", "blues": "B", "chromatic": "C"}[next_name]
         self._show_hint(hint, LogicalColor.RED_HIGH)
         self._scale_name = next_name
+        self._release_all_notes()
+        self._render()
+        self._render_controls()
+
+    def _cycle_key(self):
+        self._root_note = (self._root_note - 48 + 1) % 12 + 48
+        name = self.KEY_NAMES[self._root_note % 12]
+        self._show_hint(name, LogicalColor.RED_HIGH)
         self._release_all_notes()
         self._render()
         self._render_controls()
@@ -472,6 +488,8 @@ class InstrumentMode(Mode):
         e_color = ARP_PATTERN_COLORS.get(self._arp_pattern_idx, LogicalColor.OFF)
         self.controller.send_right_column_led(self.CTRL_ARP_PAT, e_color)
 
+        self.controller.send_right_column_led(self.CTRL_KEY, LogicalColor.AMBER_HIGH)
+
         for i in range(8):
-            if i > self.CTRL_ARP_PAT:
+            if i > self.CTRL_KEY:
                 self.controller.send_right_column_led(i, LogicalColor.OFF)

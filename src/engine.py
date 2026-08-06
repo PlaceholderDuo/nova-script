@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import time
 from pathlib import Path
@@ -53,6 +54,8 @@ class Engine:
         self._downbeat_count: int = 0
         self._last_downbeat: int = -1
         self._message_mode: Optional[MessageMode] = None
+        self._virt_ws = None
+        self._virt_last_info: str = ""
 
     def set_tui_queue(self, queue):
         self._tui_queue = queue
@@ -105,6 +108,7 @@ class Engine:
 
         if self._tui_queue is not None:
             asyncio.create_task(self._tui_broadcast_loop())
+        asyncio.create_task(self._virt_sync_loop())
 
         await self._event_loop()
 
@@ -428,7 +432,44 @@ class Engine:
             elif self.mode_manager and self.mode_manager.active_mode:
                 self.mode_manager.active_mode.enter()
 
-    async def _tui_broadcast_loop(self):
+    def _build_virt_info(self) -> dict:
+        mode = self.mode_manager.active_mode_name if self.mode_manager else ""
+        page = ""
+
+        if mode == "instrument":
+            m = self.mode_manager._modes.get("instrument")
+            if m:
+                if getattr(m, "_arp_edit_mode", False):
+                    mode = "arp_edit"
+                    page = f"page_{getattr(m, '_arp_page', 1)}"
+                elif getattr(m, "_editing_offset", False):
+                    page = "offset_select"
+                else:
+                    page = "play"
+
+        if self.overlay and self.overlay.is_overlay_active:
+            if self.overlay._active == 2:
+                mode = "screensaver"
+                page = str(getattr(self.overlay, "_active_screensaver_mode", 0))
+
+        return {"mode": mode, "page": page, "subpage": ""}
+
+    async def _virt_sync_loop(self):
+        while self._running:
+            try:
+                if self._virt_ws is None:
+                    import websockets
+                    self._virt_ws = await websockets.connect(
+                        "ws://localhost:8766", open_timeout=2, close_timeout=1
+                    )
+                info = self._build_virt_info()
+                info_str = json.dumps(info)
+                if info_str != self._virt_last_info:
+                    await self._virt_ws.send(json.dumps({"action": "set_info", **info}))
+                    self._virt_last_info = info_str
+            except Exception:
+                self._virt_ws = None
+            await asyncio.sleep(1)
         while self._running:
             if self._tui_queue:
                 snapshot = self.grid.snapshot()

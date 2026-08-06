@@ -154,6 +154,9 @@ class VirtualDevice:
         self.right_col = ["OFF"] * 8 if p["function_col"] else []
         self.left_col = ["OFF"] * 8 if p.get("function_col_left") else []
         self.connected = False
+        self.mode_name: str = ""
+        self.page_name: str = ""
+        self.subpage_name: str = ""
         self._midi_in: rtmidi.MidiIn | None = None
         self._midi_out: rtmidi.MidiOut | None = None
 
@@ -317,6 +320,9 @@ class VirtualDevice:
             "transport_labels": p.get("transport_labels", []),
             "device_brand": p.get("device_brand", ""),
             "model_line": p.get("model_line", ""),
+            "mode": self.mode_name,
+            "page": self.page_name,
+            "subpage": self.subpage_name,
         }
 
 
@@ -406,6 +412,10 @@ class VirtualizerServer:
             elif act == "get_state":
                 await ws.send(json.dumps(d.state_dict()))
                 return
+            elif act == "set_info":
+                d.mode_name = action.get("mode", "")
+                d.page_name = action.get("page", "")
+                d.subpage_name = action.get("subpage", "")
         except Exception as e:
             log.error(f"Action '{act}' failed: {e}")
         await self._broadcast_state()
