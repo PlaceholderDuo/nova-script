@@ -108,6 +108,12 @@ class InstrumentMode(Mode):
 
         self._bpm: float = 120.0
 
+        self._arp_edit_callback = None
+        self._e_press_time: float = 0.0
+        self._e_long_pending: bool = False
+
+        self._arp_pattern_slot: int = 1
+
     def set_bpm(self, bpm: float):
         self._bpm = bpm
         if self._arp_mode != self.ARP_OFF:
@@ -115,6 +121,42 @@ class InstrumentMode(Mode):
 
     def set_arp_transpose(self, diatonic: bool):
         self._arp_transpose_diatonic = diatonic
+
+    def set_arp_edit_callback(self, callback):
+        self._arp_edit_callback = callback
+
+    def get_arp_state(self) -> dict:
+        from src.ui.modes.arp_edit import _load_pattern_from_slot, DEFAULT_LENGTH, STEP_COUNT
+        intervals = _load_pattern_from_slot(self._arp_pattern_slot)
+        if not intervals:
+            intervals = [0, 2, 4, 5, 7, 4, 2, 0]
+        lengths = [DEFAULT_LENGTH] * STEP_COUNT
+        path = (Path(__file__).parent.parent.parent.parent / "config" / "arp_patterns" /
+                f"{self._arp_pattern_name}.json")
+        if path.exists():
+            try:
+                data = json.loads(path.read_text())
+                file_lengths = data.get("lengths", [])
+                if len(file_lengths) == STEP_COUNT:
+                    lengths = list(file_lengths)
+            except Exception:
+                pass
+        return {
+            "intervals": list(intervals),
+            "lengths": lengths,
+            "pattern_name": self._arp_pattern_name,
+            "current_slot": self._arp_pattern_slot,
+            "scale_intervals": list(self._scale),
+            "root_note": self._root_note,
+            "bpm": self._bpm,
+            "diatonic": self._arp_transpose_diatonic,
+        }
+
+    def update_from_arp_edit(self, state: dict):
+        self._arp_pattern_name = state.get("pattern_name", self._arp_pattern_name)
+        self._arp_pattern_slot = state.get("current_slot", self._arp_pattern_slot)
+        self._arp_step = 0
+        self._last_arp_progress = 0.0
 
     @property
     def _scale(self) -> list[int]:
@@ -166,16 +208,23 @@ class InstrumentMode(Mode):
 
     def handle_control_event(self, event: ControlEvent):
         is_press = "PRESS" in event.event_type.name
+        cid = event.control_id
+
         if not is_press:
-            cid = event.control_id
+            if cid == 100 + self.CTRL_ARP_PAT:
+                if self._e_long_pending and self._arp_edit_callback:
+                    press_ms = (time.monotonic() - self._e_press_time) * 1000
+                    if press_ms >= self._long_press_ms:
+                        self._e_long_pending = False
+                        self._arp_edit_callback()
+                        return
+                self._e_long_pending = False
             if cid == 100 + self.CTRL_NOTES:
                 self._a_held = False
                 self._editing_offset = False
                 self._render()
                 self._render_controls()
             return
-
-        cid = event.control_id
 
         if 100 <= cid < 108:
             idx = cid - 100
@@ -188,7 +237,10 @@ class InstrumentMode(Mode):
             elif idx == self.CTRL_ARP:
                 self._cycle_arp()
             elif idx == self.CTRL_ARP_PAT:
-                self._cycle_arp_pattern()
+                self._e_press_time = time.monotonic()
+                self._e_long_pending = True
+                if not self._arp_edit_callback:
+                    self._cycle_arp_pattern()
             elif idx == self.CTRL_KEY:
                 self._cycle_key()
 

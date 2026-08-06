@@ -20,6 +20,7 @@ from src.ui.modes.message import MessageMode
 from src.ui.modes.performance import PerformanceMode
 from src.ui.modes.clip_launcher import ClipLauncherMode
 from src.ui.modes.instrument import InstrumentMode
+from src.ui.modes.arp_edit import ArpEditMode
 from src.ui.overlay_manager import OverlayManager
 from src.ui.startup_wave import StartupWave
 from src.ui.image_store import ImageStore
@@ -238,8 +239,35 @@ class Engine:
         )
         self.mode_manager.register(instrument)
 
+        arp_edit = ArpEditMode(
+            self.grid,
+            self.controllers["Launchpad Mini"],
+            midi_manager=self.midi_manager,
+        )
+        self.mode_manager.register(arp_edit)
+
+        instrument.set_arp_edit_callback(self._enter_arp_edit)
+
         default_mode = self.config.get("ui", {}).get("default_mode", "performance")
         self.mode_manager.switch_to(default_mode)
+
+    def _enter_arp_edit(self):
+        inst = self.mode_manager._modes.get("instrument")
+        arp = self.mode_manager._modes.get("arp_edit")
+        if not inst or not arp:
+            return
+        state = inst.get_arp_state()
+        arp.set_state(**state)
+        self.mode_manager.switch_to("arp_edit")
+
+    def _exit_arp_edit(self):
+        inst = self.mode_manager._modes.get("instrument")
+        arp = self.mode_manager._modes.get("arp_edit")
+        if not inst or not arp:
+            return
+        state = arp.get_state()
+        inst.update_from_arp_edit(state)
+        self.mode_manager.switch_to("instrument")
 
     def _on_device_connect(self, device_name: str):
         logger.info(f"[ENGINE] Device connected: {device_name}")
@@ -286,6 +314,11 @@ class Engine:
                 return
 
         if is_press and not self.overlay.is_overlay_active:
+            if (self.mode_manager and self.mode_manager.active_mode_name == "arp_edit"
+                    and event.control_id == 201):
+                self._exit_arp_edit()
+                return
+
             shortcuts = {201: "performance", 202: "clip_launcher", 203: "sequencer", 204: "mixer", 205: "instrument"}
             if event.control_id in shortcuts:
                 mode_name = shortcuts[event.control_id]

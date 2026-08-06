@@ -23,6 +23,20 @@ class Mode(ABC):
         """Call when visual state changes. Triggers next render."""
         self._needs_render = True
 
+    def reserves_h_button(self) -> bool:
+        """Does this mode use the H (bottom right column) button?
+        When True, the global STOP feature defers to this mode's H handling."""
+        return False
+
+    def is_playing(self) -> bool:
+        """Is this mode generating autonomous playback? (ARP, clips, sequencer, etc.)
+        Used by the global STOP button to decide whether H should be lit."""
+        return False
+
+    def stop_playback(self):
+        """Stop all autonomous playback in this mode. Called by global STOP button."""
+        pass
+
     def render_pages(self):
         """Light right-column buttons as page indicators.
         Amber = total pages, Green = current page.

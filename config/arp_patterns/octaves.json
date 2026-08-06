@@ -1,5 +1,6 @@
 {
   "name": "octaves",
-  "description": "Octave jumps — 3-octave span",
-  "intervals": [0, 7, 14, 7, 0, 7, 14, 7]
+  "description": "Octave jumps — 3-octave span (intervals >6 fold to top row)",
+  "intervals": [0, 7, 12, 7, 0, 7, 12, 7],
+  "lengths": [5, 5, 5, 5, 5, 5, 5, 5]
 }
