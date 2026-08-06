@@ -3,7 +3,7 @@ Nova-Script TUI — profile management, device status, settings, grid mirror.
 """
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, Container, ScrollableContainer
-from textual.widgets import Static, Header, Footer, Button, ListView, ListItem, Label, Select
+from textual.widgets import Static, Header, Footer, Button, ListView, ListItem, Label, Select, Input
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.binding import Binding
@@ -166,6 +166,13 @@ class SettingsScreen(ModalScreen):
                 yield Select(arp_transpose_options, prompt="Diatonic" if arp_transpose else "Chromatic", value=arp_transpose, id="arp-transpose-select")
             yield Static(f"  Current profile: {self._profile_name}")
             yield Static("")
+            yield Static("— OSC —")
+            osc_scroll = self._config.get("osc", {}).get("scroll_speed_ms", 60)
+            with Horizontal(classes="setting-row"):
+                yield Static("Msg char speed (ms):", classes="setting-label")
+                yield Input(value=str(osc_scroll), placeholder="10-500", id="osc-scroll-speed")
+            yield Static("  Per-character scroll speed for OSC text messages (10–500ms)")
+            yield Static("")
             with Horizontal():
                 yield Button("Save & Close", variant="primary", id="save-settings")
                 yield Button("Mixer Setup", id="open-mixer")
@@ -188,6 +195,12 @@ class SettingsScreen(ModalScreen):
             if dc: ui["downbeat_color"] = str(dc)
             h = self.query_one("#hints-select", Select).value
             if h is not None: ui["hints_enabled"] = bool(h) if str(h) != "False" else False
+            osc = self._config.setdefault("osc", {})
+            ss = self.query_one("#osc-scroll-speed", Input).value
+            try:
+                osc["scroll_speed_ms"] = max(10, min(500, int(ss)))
+            except ValueError:
+                pass
             arp = self._config.setdefault("arp", {})
             at = self.query_one("#arp-transpose-select", Select).value
             if at is not None: arp["diatonic"] = bool(at) if str(at) != "False" else False

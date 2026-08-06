@@ -169,6 +169,8 @@ class Engine:
         self._clock.set_on_beat(self._on_beat)
         sc_config = self.config.get("screensaver", {})
         self.overlay.set_screensaver_brightness(sc_config.get("brightness", 100))
+        osc_msg_speed = self.config.get("osc", {}).get("scroll_speed_ms", 60)
+        self.overlay.set_hud_scroll_speed_ms(osc_msg_speed)
 
     def _setup_modes(self):
         self.mode_manager = ModeManager(self.grid, self.controllers["Launchpad Mini"])

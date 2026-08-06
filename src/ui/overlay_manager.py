@@ -109,8 +109,12 @@ class OverlayManager:
 
         self._fireworks: Fireworks | None = None
         self._hud_message: str = ""
+        self._hud_scroll_pos: float = 0.0
+        self._hud_scroll_speed_ms: int = 60
         self._hud_timeout: float = 0.0
         self._hud_duration_ms: int = 1500
+        self._hud_scrolling: bool = False
+        self._hud_last_tick: float = 0.0
 
         self._screensaver_modes: list[str] = SCREENSAVER_MODES[:]
         self._active_screensaver_mode: int = 0
@@ -147,20 +151,30 @@ class OverlayManager:
     def trigger_hud(self, text: str = "", image_id: int | None = None, char: str = ""):
         if char:
             self._hud_message = char
+            self._hud_timeout = time.monotonic()
+            self._hud_scrolling = False
+            self._enter_overlay(OverlayPriority.HUD)
         elif text:
             self._hud_message = text.upper()
+            self._hud_scroll_pos = 0.0
+            self._hud_scrolling = True
+            self._hud_last_tick = time.monotonic()
+            self._enter_overlay(OverlayPriority.HUD)
         elif image_id is not None:
             self.image_store.render_to_grid(image_id, self.grid)
             self._commit()
             self._hud_message = ""
-        self._hud_timeout = time.monotonic()
-        self._enter_overlay(OverlayPriority.HUD)
 
     # ── Event handling ────────────────────────────────
 
     def handle_grid_event(self, event: GridEvent) -> bool:
         if not event.pressed:
             return False
+        if self._active == OverlayPriority.HUD:
+            self._hud_message = ""
+            self._hud_scrolling = False
+            self._auto_dismiss_to_previous()
+            return True
         if self._active == OverlayPriority.ACTIVE_MODE:
             return False
         if not self._dismissed:
@@ -175,6 +189,11 @@ class OverlayManager:
         is_press = "PRESS" in event.event_type.name
         if not is_press:
             return False
+        if self._active == OverlayPriority.HUD:
+            self._hud_message = ""
+            self._hud_scrolling = False
+            self._auto_dismiss_to_previous()
+            return True
         if self._active == OverlayPriority.ACTIVE_MODE:
             return False
 
@@ -252,12 +271,24 @@ class OverlayManager:
     # ── HUD ───────────────────────────────────────────
 
     def _tick_hud(self, now: float):
-        elapsed = (now - self._hud_timeout) * 1000
-        if elapsed >= self._hud_duration_ms:
-            self._auto_dismiss_to_previous()
+        if not self._hud_scrolling:
+            elapsed = (now - self._hud_timeout) * 1000
+            if elapsed >= self._hud_duration_ms:
+                self._hud_message = ""
+                self._auto_dismiss_to_previous()
+                return
+        else:
+            dt = (now - self._hud_last_tick) * 1000
+            px_per_ms = 5.0 / self._hud_scroll_speed_ms
+            self._hud_scroll_pos += dt * px_per_ms
+            self._hud_last_tick = now
+
+        if not self._hud_message:
             return
-        if self._hud_message:
-            self.grid.clear()
+
+        self.grid.clear()
+
+        if not self._hud_scrolling:
             from src.ui.modes.message import FONT_5X5
             char = self._hud_message[0]
             glyph = FONT_5X5.get(char, FONT_5X5.get("?", ["00000"] * 5))
@@ -268,7 +299,40 @@ class OverlayManager:
                         y = 6 - row
                         if 0 <= x < 8 and 0 <= y < 8:
                             self.grid.set_cell(x, y, LogicalColor.AMBER_HIGH)
-            self._commit()
+        else:
+            self._render_scroll_text()
+        self._commit()
+
+    def _render_scroll_text(self):
+        from src.ui.modes.message import FONT_5X5
+        text = self._hud_message
+        char_w = 6
+        total_width = len(text) * char_w + 8
+        pos = int(self._hud_scroll_pos)
+
+        if pos >= total_width:
+            self._hud_message = ""
+            self._hud_scrolling = False
+            self._auto_dismiss_to_previous()
+            return
+
+        for col in range(8):
+            strip_pos = pos + col
+            char_idx = strip_pos // char_w
+            if char_idx < 0 or char_idx >= len(text):
+                continue
+            pixel_in_char = strip_pos % char_w
+            if pixel_in_char >= 5:
+                continue
+            ch = text[char_idx]
+            glyph = FONT_5X5.get(ch)
+            if glyph is None:
+                continue
+            for row in range(5):
+                if glyph[row][pixel_in_char] == "1":
+                    gy = 6 - row
+                    if 0 <= gy < 8:
+                        self.grid.set_cell(col, gy, LogicalColor.AMBER_HIGH)
 
     # ── Screensaver ───────────────────────────────────
 
@@ -356,6 +420,9 @@ class OverlayManager:
 
     def set_screensaver_brightness(self, pct: int):
         self._brightness_pct = max(0, min(100, pct))
+
+    def set_hud_scroll_speed_ms(self, ms: int):
+        self._hud_scroll_speed_ms = max(10, min(500, ms))
 
     @staticmethod
     def dim_color(color: LogicalColor, pct: int) -> LogicalColor:
