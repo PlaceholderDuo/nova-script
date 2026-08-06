@@ -291,28 +291,28 @@ class InstrumentMode(Mode):
         if note is None:
             return
 
+        if self._hold and note in self._active_notes:
+            self._send_note_off(note)
+            return
+
+        if self._hold and self._active_notes:
+            self._release_all_notes()
+
         if self._input_mode == "chords":
             for interval in self._chord:
-                chord_note = note + interval
-                self._send_note_on(chord_note)
+                self._send_note_on(note + interval)
         else:
             self._send_note_on(note)
-
-        if self._hold:
-            if self._active_notes:
-                self._release_all_notes()
-                if self._input_mode == "chords":
-                    for interval in self._chord:
-                        self._send_note_on(note + interval)
-                else:
-                    self._send_note_on(note)
 
         if self._arp_mode != self.ARP_OFF:
             self._arp_step = 0
             self._last_arp_progress = 0.0
 
     def _on_pad_release(self, x: int, y: int):
-        pass
+        note = self._get_note(x, y)
+        if note is None:
+            return
+        self._send_note_off(note)
 
     def _send_note_on(self, note: int):
         self._active_notes[note] = time.monotonic()
