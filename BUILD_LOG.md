@@ -1912,3 +1912,53 @@ When nova-script starts without a Launchpad connected, all renders go into the v
 - `src/midi/manager.py` — DeviceConnection fields
 - `config/screensaver-images.yaml` — Fixed YAML indent
 - `BUILD_LOG.md` — This entry
+
+---
+
+## Entry #25 — 2026-08-05 — Diff-Based Rendering, Startup Wave Redesign, Screensaver Mode System
+
+### Diff-Based Rendering (Phase 1-2 of Implementation Plan)
+
+Implemented the rendering optimizations from the MIDI LED control research:
+
+**Controller diff check** (`src/controllers/base.py`):
+`set_grid_color()` now compares against stored `_grid_state` before sending MIDI. Skip if unchanged. 2-line change that eliminates redundant LED traffic.
+
+**Performance mode tick throttle** (`src/ui/modes/performance.py`):
+Was rendering 64 cells unconditionally every engine tick (~10Hz idle = 640 msg/s). Now only marks dirty on state changes (tuner phase, hint expiry). Idle sends 0 messages.
+
+**Mode base tick guard** (`src/ui/mode.py`):
+Added `_needs_render` flag and `mark_dirty()`. Base `tick()` only calls `_render()` when flag is set.
+
+### Startup Wave — Bidirectional 3× Sweep
+
+Sweeps bottom-left → top-right, back, 3× total. ~4.5 seconds. Forward: `x+y=band`. Reverse: `x+y=14-band`. 4-band color trail: AMBER→GREEN→RED→RED_LOW.
+
+### Screensaver Mode System
+
+Complete rewrite. Replaced 2-image cycling with 3 selectable modes via right column A-C buttons:
+
+| Button | Mode | Description |
+|--------|------|-------------|
+| A | Heart | Classic red heart on 8×8 |
+| B | Waves | Diagonal amber gradient |
+| C | Glimmer | Random red/amber sparkle particles |
+
+Current mode = AMBER_HIGH at 80%. Others = AMBER_LOW at 20%. Unused = OFF. Single press switches mode within the overlay — no dismiss flow.
+
+### Glimmer Mode
+
+Ambient sparkle particle system. 300-900ms lifecycle with smooth birth→peak→decay. 60% red / 40% amber, zero green. Radial falloff (core→ring1→ring2). Up to 8 simultaneous sparkles, max-brightness overlap. Twin sparkles at 15% probability. 200-1200ms random interval.
+
+### UX Philosophy — Beyond Ableton
+
+[TAETRO's "Your Launchpad Can Do WAY More Than You Think"](https://www.youtube.com/watch?v=gm67P7lvEek) demonstrates the principle: Launchpad is a complete performance instrument, not just a clip launcher. Nova-script exceeds this by being cross-DAW, standalone, hardware-agnostic, and deeply customizable — the virtualizer, screensaver modes, profiles, and ARP patterns have no equivalent in Ableton's Launchpad control.
+
+### Files Changed
+- `src/controllers/base.py` — Diff check in set_grid_color
+- `src/ui/mode.py` — needs_render flag, mark_dirty, tick guard
+- `src/ui/modes/performance.py` — Conditional tick
+- `src/ui/startup_wave.py` — Bidirectional 3× wave sweep
+- `src/ui/overlay_manager.py` — Screensaver mode system + glimmer
+- `src/engine.py` — Simplified wave loop, removed cycle config
+- `BUILD_LOG.md` — This entry
