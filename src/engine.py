@@ -315,7 +315,7 @@ class Engine:
 
     def _on_beat(self, beat_count: int):
         self._beat_led_on = True
-        self._beat_led_off_time = time.monotonic() + 0.08
+        self._beat_led_off_time = time.monotonic() + 0.12
         mode = self.config.get("ui", {}).get("downbeat_flash", "tempo_led")
 
         is_downbeat = (beat_count % 4 == 1)
@@ -343,6 +343,12 @@ class Engine:
             return LogicalColor[color_name]
         except KeyError:
             return LogicalColor.GREEN_HIGH
+
+    def _flash_downbeat_corners(self):
+        color = self._get_downbeat_color()
+        lp = self.controllers.get("Launchpad Mini")
+        if lp is None:
+            return
         corners = [(0, 0), (7, 0), (0, 7), (7, 7)]
         for x, y in corners:
             lp.set_grid_color(x, y, color)
