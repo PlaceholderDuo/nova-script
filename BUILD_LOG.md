@@ -2034,3 +2034,102 @@ Flash 80ms→120ms. Removed dead code in `_get_downbeat_color`.
 - `tools/novation-virtualizer.html` — Mode-aware info panel
 - `docs/INSTRUMENT_MODE.md` — Hint table update
 - `BUILD_LOG.md` — This entry
+
+
+## Entry #27 — 2026-08-06 — Performance Mode Redesign: Dual-Channel GTR/VOX
+
+Complete redesign of Performance Mode from a generic 8-track view into a purpose-built dual-channel live FX controller. Grid split vertically: left half (cols 0-3) = GTR, right half (cols 4-7) = VOX. Each channel has a volume bar, 4 FX blocks with 6 presets each, and per-FX disable. Reverb moved to Mixer Mode.
+
+### Design Document
+[`docs/PERFORMANCE_VIEW_VISION_DOC.md`](docs/PERFORMANCE_VIEW_VISION_DOC.md) — 310-line vision document covering layout, volume column math, FX preset/bank system, OSC mapping, and edge cases.
+
+### Grid Layout
+```
+Col: 0        1   2   3        4        5   6   7
+y=7: [GTR Vol] [FX1: Delay presets] [VOX Vol] [FX1: Delay presets]
+y=6: [GTR Vol] [FX1: disable bar  ] [VOX Vol] [FX1: disable bar  ]
+y=5: [GTR Vol] [FX2: Harmony       ] [VOX Vol] [FX2: Harmony       ]
+y=4: [GTR Vol] [FX2: disable bar   ] [VOX Vol] [FX2: disable bar   ]
+y=3: [GTR Vol] [FX3: Amp&Drv       ] [VOX Vol] [FX3: Drv&Flt       ]
+y=2: [GTR Vol] [FX3: disable bar   ] [VOX Vol] [FX3: disable bar   ]
+y=1: [GTR Vol] [FX4: Tremolo       ] [VOX Vol] [FX4: Misc SFX      ]
+y=0: [GTR Vol] [FX4: disable bar   ] [VOX Vol] [FX4: disable bar   ]
+```
+
+### Volume Columns (cols 0, 4)
+Dual-level press system on 8 pads covering 18-32 level range. Each pad has two logical levels: first press = GREEN_HIGH (higher even level), second press = AMBER_HIGH (lower odd level). Pads above current level show RED_HIGH (full column always lit). Pads below show OFF.
+
+**Level mapping:**
+| Pad | 1st press | 2nd press |
+|-----|-----------|-----------|
+| 7 | 32 | 31 |
+| 6 | 30 | 29 |
+| 5 | 28 | 27 |
+| 4 | 26 | 25 |
+| 3 | 24 | 23 |
+| 2 | 22 | 21 |
+| 1 | 20 | 19 |
+| 0 | 18 | MUTE (0) |
+
+Pad 0 double-press = mute: entire column turns RED_HIGH, volume = 0. Pressing any pad while muted unmutes to that level. Formula: `vol = 18 + 2*pad_y - (1 if sub else 0)`.
+
+### FX Preset System
+4 FX per channel with 3 pads × 2 banks = 6 presets per FX. Presets are saved "snapshot" configurations in Reaper (not just bypass toggles — they recall full FX chain settings).
+
+**Bank toggle:**
+- Press unused pad: select bank 1 preset (pad 0→preset1, pad 1→preset2, pad 2→preset3)
+- Press selected pad (bank 1): switch to bank 2 (pad 0→preset4, pad 1→preset5, pad 2→preset6)
+- Press selected pad (bank 2): switch back to bank 1
+
+**Color coding:**
+- Unselected preset: GREEN_HIGH
+- Selected, bank 1: AMBER_HIGH (ORANGE)
+- Selected, bank 2: RED_HIGH
+- Presets when FX disabled: OFF
+
+**Auto-enable:** Pressing any preset pad when the FX is disabled automatically enables it and selects that preset. This prevents the user from changing presets on a bypassed effect (the preset wouldn't take effect until the FX is re-enabled).
+
+### FX Disable Bars
+Directly below each FX block, 3 RED pads that toggle the effect on/off:
+- Disabled: RED_MED
+- Enabled: RED_HIGH
+
+Single press toggles — press any of the 3 pads to disable, press any again to re-enable. The previous preset is restored on re-enable.
+
+### FX Order (top to bottom)
+| Row Pair | GTR | VOX |
+|----------|-----|-----|
+| 7-6 | Delay | Delay |
+| 5-4 | Harmony | Harmony |
+| 3-2 | Amp & Drive | Drive & Filters |
+| 1-0 | Tremolo | Misc / Special FX |
+
+### Reverb in Mixer
+Mixer Mode now has reverb send on row 0. 3-way toggle per track cycle: OFF (0%) → AMBER_MED (50%) → GREEN_HIGH (100%). OSC: `/track/{n}/fx/rev/send` (float 0.0-1.0). Reverb was removed from Performance Mode (replaced by Amp&Drv for GTR, Drv&Flt for VOX).
+
+### OSC Mapping
+| Channel | Track | Volume | FX {1..4} Preset | FX {1..4} Bypass |
+|---------|-------|--------|-------------------|-------------------|
+| GTR | 2 | /track/2/volume | /track/2/fx/{k}/preset | /track/2/fx/{k}/bypass |
+| VOX | 1 | /track/1/volume | /track/1/fx/{k}/preset | /track/1/fx/{k}/bypass |
+
+Volume: float 0.0-1.0. Bypass: 0=enabled, 1=disabled. Preset: int 1-6.
+
+### Unit Tests
+[`tests/test_performance_mode.py`](tests/test_performance_mode.py) — 37 assertions across 7 test areas:
+- Volume pad ↔ level mapping (10 bidirectional tests)
+- FX row layout (4 tests verifying Delay=7/6, Harmony=5/4, Amp&Drv=3/2, Tremolo=1/0)
+- Volume press: dual-level toggle, repeat cycling, cross-pad jump
+- Volume mute/unmute: full column RED, unmute on any press
+- FX preset select: bank toggle, cross-pad switch, colors verified
+- FX disable: re-enable via preset press, disable row color change
+- Independent channels: GTR and VOX operate independently
+
+### Files Changed
+- `src/ui/modes/performance.py` — Complete rewrite (273 lines): split GTR/VOX, volume bars, FX preset blocks, OSC sender
+- `src/ui/modes/mixer.py` — Reverb send row 0, 3-way toggle, osc_bridge support
+- `src/engine.py` — Pass osc_bridge to MixerMode
+- `docs/PERFORMANCE_VIEW_VISION_DOC.md` — New: 310-line vision document
+- `docs/BUTTON_REFERENCE.md` — Updated Performance + Mixer sections
+- `docs/PAD-NAVIGATION-MANUAL.md` — Updated Performance + Mixer sections
+- `tests/test_performance_mode.py` — New: 37-assertion test suite
