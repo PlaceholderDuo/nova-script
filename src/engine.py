@@ -203,6 +203,7 @@ class Engine:
         mixer = MixerMode(
             self.grid,
             self.controllers["Launchpad Mini"],
+            osc_bridge=self.osc,
         )
         self.mode_manager.register(mixer)
 

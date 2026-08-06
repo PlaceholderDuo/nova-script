@@ -48,34 +48,37 @@
 
 ## Performance Control Mode
 
-**Purpose:** Track mute + FX toggles for live performance.
+**Purpose:** Dual-channel live FX controller. Split grid: GTR (left half), VOX (right half).
 
-### Page 1: Mute + Core FX
+### Grid Layout
 
-**Top row (1-8):** Track mute toggles
-| Button | Track | Color |
-|--------|-------|-------|
-| 1 | Vox | Amber (unmuted) / Red (muted) |
-| 2 | GTR | Amber (unmuted) / Red (muted) |
-| 3 | Bass | Amber (unmuted) / Red (muted) |
-| 4-8 | Track 4-8 | Amber (unmuted) / Red (muted) |
+```
+Col: 0        1   2   3        4        5   6   7
+y=7: [G Vol  ] [FX1: Delay       ] [V Vol  ] [FX1: Delay       ]
+y=6: [G Vol  ] [  disable bar    ] [V Vol  ] [  disable bar    ]
+y=5: [G Vol  ] [FX2: Harmony     ] [V Vol  ] [FX2: Harmony     ]
+y=4: [G Vol  ] [  disable bar    ] [V Vol  ] [  disable bar    ]
+y=3: [G Vol  ] [FX3: Amp&Drv     ] [V Vol  ] [FX3: Drv&Flt     ]
+y=2: [G Vol  ] [  disable bar    ] [V Vol  ] [  disable bar    ]
+y=1: [G Vol  ] [FX4: Tremolo     ] [V Vol  ] [FX4: Misc SFX    ]
+y=0: [G Vol  ] [  disable bar    ] [V Vol  ] [  disable bar    ]
+```
 
-**GTR hold:** Pressing GTR mute when unmuted activates **strobe tuner** on full 8×8.
-Displays T-N-R intro animation (0.3s per letter orange), then tuner.
-Press any button to dismiss.
+**Volume columns (0, 4):** Dual-level press. First press = GREEN (higher even level). Second press on same pad = ORANGE (lower odd level). Pads above current level = RED. Pad 0 double-press = MUTE (full column RED). Pressing any pad while muted unmutes.
 
-**Right column (A-E):** FX toggles for the currently selected track
-| Button | FX | Color |
-|--------|-----|-------|
-| A | Rev (Reverb) | Red=off, Green=on |
-| B | Dly (Delay) | Red=off, Green=pulsing at BPM |
-| C | Chor (Chorus) | Red=off, Green=pulsing at BPM |
-| D | Hrm↑ (Harmonizer Up) | Red=off, Green=on |
-| E | Hrm↓ (Harmonizer Down) | Red=off, Green=on |
+**FX presets:** 3 pads per FX with 2 banks = 6 presets per FX. Press unused pad = select bank 1. Press selected pad = toggle bank. Bank 1 = ORANGE, Bank 2 = RED. GREEN = available preset. Pressing any preset auto-enables disabled FX.
 
-**FX Hints:** When toggling an FX, the first letter flashes on the grid:
-- Green = turning ON, Red = turning OFF
-- 0.3 second display
+**FX disable:** RED bar directly below each FX. Press any of 3 pads to disable/re-enable. RED_MED = disabled, RED_HIGH = enabled.
+
+**FX order (top to bottom):**
+| Row Pair | GTR | VOX |
+|----------|-----|-----|
+| 7-6 | Delay | Delay |
+| 5-4 | Harmony | Harmony |
+| 3-2 | Amp & Drive | Drive & Filters |
+| 1-0 | Tremolo | Misc / Special FX |
+
+**Reverb:** Moved to Mixer Mode (row 0 per track, 3-way toggle).
 
 ### Page 2: Extended FX (coming soon)
 
@@ -133,11 +136,12 @@ Press any button to dismiss.
 
 ## Mixer Mode
 
-**Purpose:** 8-track volume faders + mute toggles.
+**Purpose:** 8-track volume faders + mute toggles + reverb sends.
 
-**Grid:** 8 columns (tracks) × 7-row faders + 1 mute row
-- Rows 0-6: tap to set volume (7 levels of resolution)
-- Row 7: mute toggle (Red=muted, Amber=unmuted)
+**Grid:** 8 columns (tracks) × 6-row faders + 1 mute row + 1 reverb row
+- Rows 1-6: Tap to set volume (6 levels of resolution). GREEN_MED = filled, GREEN_HIGH = current level.
+- Row 7: Mute toggle (RED_HIGH = muted, AMBER_LOW = unmuted).
+- Row 0: Reverb send. 3-way toggle: OFF (0%) → AMBER_MED (50%) → GREEN_HIGH (100%).
 
 **Top row:**
 | Button | Action |

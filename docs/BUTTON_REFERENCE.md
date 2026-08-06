@@ -6,6 +6,8 @@ Master reference for every button, LED, and grid interaction across all nova-scr
 
 ## Performance Mode (Top-1 shortcut, default)
 
+**Dual-channel FX controller.** Grid is split vertically: **left half = GTR** (cols 0-3), **right half = VOX** (cols 4-7). Each channel has a volume bar, 4 FX blocks with 6 presets each, and per-FX disable.
+
 ### Top Row (1-8)
 | Button | LED | Action |
 |--------|-----|--------|
@@ -16,25 +18,56 @@ Master reference for every button, LED, and grid interaction across all nova-scr
 | 5 | OFF | Switch to Instrument |
 | 6-8 | OFF | Unused |
 
-### Right Column (A-H)
-| Button | LED | Action |
-|--------|-----|--------|
-| A | GREEN (page 1) / AMBER (page 2+) | Page indicator — current page |
-| B | AMBER (page 2) / OFF | Page indicator — page 2 available |
-| C-H | OFF | Unused |
+### Grid Layout
 
-### Grid (8×8)
-- **Row 7 (bottom):** Track mute indicators. GREEN_LOW = active track, AMBER_LOW = track, RED_HIGH = muted.
-- **Rows 1-6:** FX state. OFF = disabled (default), GREEN_HIGH/MED = enabled (pulsing for time-based FX).
-- **Press top row button:** Toggle track mute.
-- **Press right column A/B:** Switch page (1 = mute+FX, 2 = extended FX placeholder).
-- **Long-press GTR mute (Top-2):** Activate strobe tuner on full grid.
+```
+Col: 0        1   2   3        4        5   6   7
+y=7: [GTR Vol] [FX1: Delay presets] [VOX Vol] [FX1: Delay presets]
+y=6: [GTR Vol] [FX1: disable bar  ] [VOX Vol] [FX1: disable bar  ]
+y=5: [GTR Vol] [FX2: Harmony       ] [VOX Vol] [FX2: Harmony       ]
+y=4: [GTR Vol] [FX2: disable bar   ] [VOX Vol] [FX2: disable bar   ]
+y=3: [GTR Vol] [FX3: Amp&Drv       ] [VOX Vol] [FX3: Drv&Flt       ]
+y=2: [GTR Vol] [FX3: disable bar   ] [VOX Vol] [FX3: disable bar   ]
+y=1: [GTR Vol] [FX4: Tremolo       ] [VOX Vol] [FX4: Misc SFX      ]
+y=0: [GTR Vol] [FX4: disable bar   ] [VOX Vol] [FX4: disable bar   ]
+```
+
+### Volume Columns (cols 0, 4)
+- 8 pads, dual-level press system. 16 levels (18-32) + mute.
+- **First press on pad:** GREEN_HIGH, higher level (even: 18, 20, 22, ... 32).
+- **Second press on same pad:** AMBER_HIGH, lower level (odd: 17, 19, 21, ... 31).
+- **Pad 0 double-press:** MUTE (entire column turns RED_HIGH).
+- **Pads above current level:** RED_HIGH (full column always shows level position).
+- **Pads below current level:** OFF.
+- **Press any pad while muted:** Unmutes to that level.
+
+### FX Preset Pads (cols 1-3 GTR, cols 5-7 VOX)
+- 4 FX per channel, top to bottom: Delay, Harmony, Amp&Drv, Tremolo (GTR) / Delay, Harmony, Drv&Flt, Misc SFX (VOX).
+- 3 pads per FX with 2 banks = **6 presets per FX.**
+- **Unselected preset:** GREEN_HIGH.
+- **Selected preset, bank 1:** AMBER_HIGH (ORANGE).
+- **Selected preset, bank 2:** RED_HIGH.
+- **Press unused pad:** Select bank 1 preset for that pad.
+- **Press selected pad (bank 1):** Switch to bank 2 preset.
+- **Press selected pad (bank 2):** Switch back to bank 1 preset.
+- **Press preset when FX disabled:** Auto-enables the FX and selects that preset.
+
+### FX Disable Pads (directly below each FX block)
+- 3 RED pads. Press any to disable/re-enable the FX.
+- **Disabled:** RED_MED.
+- **Enabled:** RED_HIGH.
+
+### OSC Mapping
+| Channel | Track | Volume | Delay | Harmony | Amp&Drv/Drv&Flt | Tremolo/Misc |
+|---------|-------|--------|-------|---------|-----------------|--------------|
+| GTR | /track/2 | /track/2/volume | /track/2/fx/1/preset | /track/2/fx/2/preset | /track/2/fx/3/preset | /track/2/fx/4/preset |
+| VOX | /track/1 | /track/1/volume | /track/1/fx/1/preset | /track/1/fx/2/preset | /track/1/fx/3/preset | /track/1/fx/4/preset |
+
+All FX also send `/track/{n}/fx/{k}/bypass` (0 = enabled, 1 = bypassed). Volume sends float 0.0-1.0.
 
 ### Settings (TUI)
-- `ui.hints_enabled` — toggle visual hints
 - `ui.downbeat_flash` — tempo_led / 4_corners / disable
 - `ui.downbeat_color` — beat 1 color
-- Performance tracks configured in profile
 
 ---
 
@@ -240,10 +273,10 @@ Hold A → A button flashes → top row pads 1-5 show offset options (ORANGE exc
 | 5 | OFF | Instrument |
 
 ### Grid (8×8)
-- 8 tracks × 7-row vertical faders. Each column = one track. Row height = fader position.
-- Press pad: Set fader to that row's level.
-- Bottom row = 0%, top row = 100%.
-- Right column buttons: Bank switches, mute/solo.
+- 8 tracks × 6-row vertical faders (rows 1-6). Each column = one track. Row height = fader position.
+- Row 7: Mute toggles (AMBER_LOW = unmuted, RED_HIGH = muted).
+- Row 0: Reverb send (OFF = 0%, AMBER_MED = 50%, GREEN_HIGH = 100%). 3-way toggle per track.
+- OSC: `/track/{n}/fx/rev/send` (float 0.0-1.0).
 
 ---
 
