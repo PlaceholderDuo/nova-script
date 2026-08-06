@@ -196,6 +196,34 @@ main {
 }
 .help-text code { background: #252525; padding: 1px 5px; border-radius: 3px; color: #666; font-size: 10px; }
 .help-text b { color: #666; font-weight: 500; }
+
+/* ── Main layout (device + info panel) ── */
+.main-layout {
+  display: flex; gap: 20px; align-items: flex-start; justify-content: center;
+  flex-wrap: wrap;
+}
+.info-panel {
+  background: #1e1e1e; border: 1px solid #2a2a2a; border-radius: 6px;
+  padding: 12px; min-width: 200px; max-width: 260px; display: none;
+  font-size: 10px; color: #888; line-height: 1.6;
+}
+.info-panel h3 { color: #ccc; font-size: 11px; margin: 0 0 6px; font-weight: 500; }
+.info-panel h4 { color: #aaa; font-size: 10px; margin: 8px 0 2px; }
+.info-panel .item { display: flex; align-items: center; gap: 5px; margin: 2px 0; }
+.info-panel .dot-inline {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.info-panel hr { border: none; border-top: 1px solid #2a2a2a; margin: 8px 0; }
+
+.button-labels-top, .button-labels-right {
+  font-size: 8px; color: #555; margin-top: 2px;
+  text-align: center; line-height: 1.4;
+}
+.col-btn-wrap .btn-tooltip {
+  font-size: 7px; color: #555; line-height: 1.4; margin-right: 4px;
+  text-align: right; min-width: 60px;
+}
+.col-btn-wrap .btn-tooltip .dot-inline { width: 6px; height: 6px; }
 </style>
 </head>
 <body>
@@ -233,7 +261,10 @@ main {
 
 <main>
   <div id="error-banner"></div>
-  <div id="device-area"><div class="device-shell"><div class="brand-area"><span class="brand">Launchpad Mini</span><span class="model">MK1</span></div></div></div>
+  <div class="main-layout">
+    <div id="device-area"><div class="device-shell"><div class="brand-area"><span class="brand">Launchpad Mini</span><span class="model">MK1</span></div></div></div>
+    <div class="info-panel" id="info-panel"></div>
+  </div>
   <div class="help-text" id="help"></div>
 </main>
 
@@ -664,6 +695,71 @@ function render() {
   const isLaunchkey = state.has_transport || (state.grid_h <= 2 && state.num_knobs > 0);
   const shell = isLaunchkey ? renderLaunchkey() : renderLaunchpad();
   area.appendChild(shell);
+
+  updateInfoPanel();
+}
+
+function updateInfoPanel() {
+  const panel = $('info-panel');
+  if (!state || !state.type) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+
+  const type = state.type;
+  const rightCol = state.right_col || [];
+  const topRow = state.top_row || [];
+
+  let html = '';
+
+  // Detect mode from LED patterns
+  const isScreensaver = rightCol.every((c, i) => i < 3 ? c !== 'OFF' : c === 'OFF');
+
+  if (isScreensaver) {
+    html = '<h3>Screensaver</h3>';
+    const modes = ['Heart', 'Waves', 'Glimmer'];
+    html += '<h4>Right column — modes</h4>';
+    modes.forEach((m, i) => {
+      const color = rightCol[i] || 'OFF';
+      html += renderButtonItem(m, color);
+    });
+    html += '<hr><p>Press any grid pad to dismiss screensaver.</p>';
+
+  } else if (rightCol[0] && rightCol[1] && rightCol[4]) {
+    // Instrument mode: A=Notes/Chords, B=Scale, E=ARP Pattern
+    html = '<h3>Instrument Mode</h3>';
+    html += '<h4>Right column controls</h4>';
+    html += renderButtonItem(rightCol[0], 'Notes' + (rightCol[0].includes('AMBER') ? ' → Chords' : ''), rightCol[0]);
+    html += renderButtonItem(rightCol[1], 'Scale', rightCol[1]);
+
+    const scaleCol = rightCol[1];
+    if (scaleCol && scaleCol.includes('GREEN')) html += '<span class="item">  <span class="dot-inline" style="background:lime"></span> Major</span><br>';
+    if (scaleCol && scaleCol.includes('AMBER')) html += '<span class="item">  <span class="dot-inline" style="background:#ff9b06"></span> Blues</span><br>';
+    if (scaleCol && scaleCol.includes('RED')) html += '<span class="item">  <span class="dot-inline" style="background:#f52608"></span> Chromatic</span><br>';
+
+    html += '<hr><h4>Grid</h4>';
+    html += '<p>8×8 scale-mapped instrument. Press pads to play notes in the current scale. RED=root notes, GREEN=pressed, AMBER=scale notes.</p>';
+
+  } else if (rightCol[0] && rightCol[1]) {
+    // Performance mode: A/B page indicators
+    html = '<h3>Performance Mode</h3>';
+    html += '<h4>Grid row 7 (bottom)</h4>';
+    html += '<p>Track mute indicators. GREEN=active, AMBER=track, RED=muted.</p>';
+    html += '<h4>Grid rows 1-6</h4>';
+    html += '<p>FX state. Press right column 1-5 to toggle.</p>';
+  }
+
+  html += '<hr><h4>Top row shortcuts</h4>';
+  html += '<p>1=Performance  2=Clip  3=Seq  4=Mix  5=Instrument</p>';
+
+  if (state.connected) {
+    html += '<hr><p style="color:#0a2">MIDI port active</p>';
+  }
+
+  panel.innerHTML = html;
+}
+
+function renderButtonItem(name, color) {
+  const rgb = LED_COLORS[color] || LED_COLORS.OFF;
+  return '<span class="item"><span class="dot-inline" style="background:rgb('+rgb.join(',')+')"></span> ' + name + '</span><br>';
 }
 
 // ── Controls ─────────────────────────────────────────────────────────────
