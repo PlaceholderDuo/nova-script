@@ -1962,3 +1962,41 @@ Ambient sparkle particle system. 300-900ms lifecycle with smooth birth→peak→
 - `src/ui/overlay_manager.py` — Screensaver mode system + glimmer
 - `src/engine.py` — Simplified wave loop, removed cycle config
 - `BUILD_LOG.md` — This entry
+
+---
+
+## Entry #26 — 2026-08-05 — ARP Vision, Hold/ARP Fix, Diatonic Transposition, Key System, Virtualizer Help Panel
+
+### ARP Pattern Editor Vision
+[`docs/ARP_VISION_DOC.md`](docs/ARP_VISION_DOC.md) — 329-line specification for on-Launchpad ARP pattern creation: 3-page × 8-slot library (24 total, 3 factory + 15 user), page navigation via G/H, save via long-press with GREEN blink, factory slots marked RED and read-only, ARP Edit Mode via long-press E, Note-Length sub-mode with LENGTH scroll entry animation, BPM-synced beat chase. Full 6-suite 30-case test plan.
+
+### Hold + ARP Bug Fixes
+Three critical bugs: Hold OFF never released notes (`_on_pad_release` was `pass`), Hold ON sent duplicate Note ON when replacing held note, same pad in Hold ON now toggles note off. All fixed.
+
+### ARP Diatonic Transposition
+Pattern intervals are scale-degree offsets, not semitones. Pattern [0,2,4] from C→C-E-G, from D→D-F-A (minor, in key). 3 edge cases: wraps modulo on overflow, chromatic=flat on 12-note scale, snaps out-of-scale notes. TUI toggle: Settings → ARP → Diatonic/Chromatic.
+
+### Key/Root Note System
+F button cycles root key (C→C#→D→...→B→C) with RED hint. Natural Minor scale added (intervals [0,2,3,5,7,8,10]) — 4 scales now: Major (S), Minor (m), Blues (B), Chromatic (C). Diatonic ARP follows key automatically.
+
+### Scale Hint Redesign
+All scale hints now RED with updated letters: S/Major, m/minor, B/Blues, C/Chromatic. Rapid cycling replaces hint immediately.
+
+### Virtualizer Help Panel — Mode-Aware
+Engine connects to virtualizer WebSocket and sends `{mode, page, subpage}` via `set_info` action. Help panel renders from actual mode name — no LED pattern guessing. Full help for all 8 screens with LED color dots per button.
+
+### Button Reference Document
+[`docs/BUTTON_REFERENCE.md`](docs/BUTTON_REFERENCE.md) — 300-line master reference: every button, LED, grid interaction, and setting across all modes.
+
+### BPM LED Fix
+Flash 80ms→120ms. Removed dead code in `_get_downbeat_color`.
+
+### Files Changed
+- `docs/ARP_VISION_DOC.md` — New: ARP editor spec
+- `docs/BUTTON_REFERENCE.md` — New: mode button reference
+- `src/ui/modes/instrument.py` — Hold/ARP fixes, diatonic ARP, key, minor scale, hints
+- `src/engine.py` — Virt WS sync, BPM fix, dead code, config pass-through
+- `tools/novation-virtualizer.py` — set_info action, mode fields
+- `tools/novation-virtualizer.html` — Mode-aware info panel
+- `docs/INSTRUMENT_MODE.md` — Hint table update
+- `BUILD_LOG.md` — This entry
