@@ -80,12 +80,6 @@ y=0: [G Vol  ] [  disable bar    ] [V Vol  ] [  disable bar    ]
 
 **Reverb:** Moved to Mixer Mode (row 0 per track, 3-way toggle).
 
-### Page 2: Extended FX (coming soon)
-
-**Right column (F-H):** Page navigation
-- Amber = page exists, Green = current page
-- H = Page 1 (mute + core FX), G = Page 2 (extended FX)
-
 ---
 
 ## Clip Launcher Mode
