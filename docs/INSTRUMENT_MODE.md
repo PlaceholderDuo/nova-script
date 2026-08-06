@@ -128,14 +128,14 @@ When any right-column control button is pressed, a brief 5×5 letter overlay app
 
 | Control | What You See | Colors |
 |---------|-------------|--------|
-| **B (Scale)** | `M` / `B` / `C` | GREEN=Major, AMBER=Blues, RED=Chromatic |
+| **B (Scale)** | `S` / `B` / `C` | RED (all scale hints) |
 | **C (Hold)** | `H` | GREEN=ON, RED=OFF |
 | **D (ARP)** | `A` | RED=OFF, GREEN=Up, AMBER=Down |
 | **E (ARP Pat)** | `1` / `2` / `3` | GREEN=Normal, AMBER=Chordal, RED=Octaves |
 
 **Why 300ms:** Long enough to read, short enough to not interfere with playing. The grid returns to its normal instrument display automatically — no press required to dismiss.
 
-**Design rationale:** The hint letter color matches the right-column LED color of the target state, creating a consistent visual language. If ARP is cycling from OFF (red LED) to UP (green LED), the hint shows "A" in green. If Scale is cycling to Blues, the hint shows "B" in amber — matching the amber LED on the B button.
+**Design rationale:** The hint letters spell out the mode (S=Scale, B=Blues, C=Chromatic) in RED for consistency across all scale changes. When the user double-presses rapidly to skip to a mode 2-states away, the first hint is immediately replaced by the second — no overlap or animation queue.
 
 
 

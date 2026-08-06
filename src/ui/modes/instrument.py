@@ -243,8 +243,8 @@ class InstrumentMode(Mode):
         current = names.index(self._scale_name)
         next_idx = (current + 1) % len(names)
         next_name = names[next_idx]
-        hint = {"major": "M", "blues": "B", "chromatic": "C"}[next_name]
-        self._show_hint(hint, SCALE_COLORS[next_name])
+        hint = {"major": "S", "blues": "B", "chromatic": "C"}[next_name]
+        self._show_hint(hint, LogicalColor.RED_HIGH)
         self._scale_name = next_name
         self._release_all_notes()
         self._render()
