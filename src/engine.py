@@ -93,12 +93,8 @@ class Engine:
 
         self._startup_wave = StartupWave(self.grid, self.controllers["Launchpad Mini"])
         self._startup_wave.start()
-        sim_time = self._startup_wave._start
-        for _ in range(120):
-            if not self._startup_wave.tick(now=sim_time):
-                break
-            sim_time += 0.06
-            await asyncio.sleep(0.05)
+        while self._startup_wave.tick():
+            await asyncio.sleep(0.03)
 
         await asyncio.sleep(0.2)
 
@@ -168,8 +164,6 @@ class Engine:
         )
         self._clock.set_on_beat(self._on_beat)
         sc_config = self.config.get("screensaver", {})
-        if sc_config.get("cycle_enabled"):
-            self.overlay.set_screensaver_cycle(True)
         self.overlay.set_screensaver_brightness(sc_config.get("brightness", 100))
 
     def _setup_modes(self):

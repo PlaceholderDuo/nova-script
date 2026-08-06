@@ -1,12 +1,19 @@
 """
-Startup wave — single continuous wave with amber→green→red chasing.
+Startup wave — bidirectional diagonal ripple that sweeps 3× across the grid.
+Bottom-left → top-right → back to bottom-left → repeats 3×. ~5 seconds total.
 """
 import math
+import time
 import logging
 from src.controllers.color_map import LogicalColor
 from src.layout.grid import LogicalGrid
 
 logger = logging.getLogger(__name__)
+
+PASS_DURATION = 0.75
+TOTAL_PASSES = 6
+TRAIL_LENGTH = 4
+FRAME_MS = 0.03
 
 
 class StartupWave:
@@ -17,49 +24,52 @@ class StartupWave:
         self._done = False
 
     def start(self):
-        self._start = __import__("time").monotonic()
+        self._start = time.monotonic()
         self._done = False
-        logger.info("Startup wave: amber → green → red")
+        logger.info(f"Startup wave: bidirectional 3× sweep (~{PASS_DURATION * TOTAL_PASSES:.1f}s)")
 
-    def tick(self, now: float | None = None) -> bool:
-        if now is None:
-            now = __import__("time").monotonic()
+    def tick(self) -> bool:
         if self._done:
             return False
 
+        now = time.monotonic()
         elapsed = now - self._start
-        lead_band = int(elapsed / 0.04)
-        total = 18
+        total = PASS_DURATION * TOTAL_PASSES
 
-        if lead_band >= total + 6:
+        if elapsed >= total:
             self.grid.clear()
             self._commit()
             self._done = True
             return False
 
+        pass_idx = int(elapsed / PASS_DURATION)
+        pass_elapsed = elapsed - pass_idx * PASS_DURATION
+        forward = (pass_idx % 2 == 0)
+
+        lead = int(pass_elapsed / 0.015)
+
         self.grid.clear()
 
-        for band in range(max(0, lead_band - 6), lead_band + 1):
-            distance = lead_band - band
-            if distance <= 1:
+        for band in range(max(0, lead - TRAIL_LENGTH), lead + 1):
+            dist = lead - band
+            if dist <= 1:
                 color = LogicalColor.AMBER_HIGH
-            elif distance <= 2:
-                color = LogicalColor.AMBER_MED
-            elif distance <= 3:
+            elif dist <= 2:
                 color = LogicalColor.GREEN_HIGH
-            elif distance <= 4:
-                color = LogicalColor.GREEN_MED
-            elif distance <= 5:
+            elif dist <= 3:
                 color = LogicalColor.RED_HIGH
             else:
                 color = LogicalColor.RED_LOW
 
-            for x in range(band + 1):
-                y = band - x
+            if forward:
+                total = band
+            else:
+                total = 14 - band
+
+            for x in range(max(0, total - 7), min(7, total) + 1):
+                y = total - x
                 if 0 <= x < 8 and 0 <= y < 8:
-                    existing = self.grid.get_cell(x, y)
-                    if existing == LogicalColor.OFF:
-                        self.grid.set_cell(x, y, color)
+                    self.grid.set_cell(x, y, color)
 
         self._commit()
         return True
