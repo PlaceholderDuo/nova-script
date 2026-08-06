@@ -60,10 +60,15 @@ The 3 factory patterns (normal, chordal, octaves) occupy slots A, B, C on page 1
 
 ### Slot LEDs (Normal State)
 
-- Occupied slot (has pattern): AMBER_LOW (20%)
-- Empty slot: OFF
-- Currently selected slot: AMBER_HIGH (80%)
-- During save (1s blink): GREEN blinking
+| Slot Type | LED | Meaning |
+|-----------|-----|---------|
+| **Factory slot** (A/B/C) | RED_LOW | Protected — read-only |
+| User slot (occupied) | AMBER_LOW (20%) | Has a saved pattern |
+| User slot (empty) | OFF | No pattern saved |
+| Currently selected | RED_HIGH (factory) / AMBER_HIGH (user) | Active pattern |
+| During save (user only) | GREEN blinking (1s) | Saving to slot |
+
+Factory slots A/B/C are read-only. Long-pressing them has no effect — no blink, no save. Only user slots D-H accept saves.
 
 ### Saving a Pattern
 
@@ -232,9 +237,9 @@ When entering note-length mode, the grid displays scrolling text **"LENGTH"** in
 
 | Button | LED (edit mode) | Action (short press) | Action (long press) |
 |--------|-----------------|---------------------|---------------------|
-| **A** | AMBER_LOW/HIGH | Select pattern in slot A | Save current to slot A |
-| **B** | AMBER_LOW/HIGH | Select pattern in slot B | Save current to slot B |
-| **C** | AMBER_LOW/HIGH | Select pattern in slot C | Save current to slot C |
+| **A** | RED_LOW/HIGH | Select factory pattern A | — (protected) |
+| **B** | RED_LOW/HIGH | Select factory pattern B | — (protected) |
+| **C** | RED_LOW/HIGH | Select factory pattern C | — (protected) |
 | **D** | AMBER_LOW/HIGH | Select pattern in slot D | Save current to slot D |
 | **E** | RED_HIGH | Enter note-length mode | — |
 | **F** | AMBER_LOW/HIGH | Select pattern in slot F | Save current to slot F |
