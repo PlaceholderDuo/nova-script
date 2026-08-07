@@ -29,6 +29,17 @@ SCALE_ROWS = 7
 NUM_PADS = 8
 DEFAULT_LENGTH = 5
 
+LENGTH_MULTIPLIERS = {
+    1: 0.25,   # 1/32 note (ultra-staccato)
+    2: 0.33,   # 1/16 triplet
+    3: 0.50,   # 1/16 note (standard short)
+    4: 0.67,   # 1/8 triplet
+    5: 1.00,   # 1/8 note (full step, default)
+    6: 1.50,   # dotted 1/8 (overlaps next step)
+    7: 2.00,   # 1/4 note (spans 2 steps)
+    8: 99.0,   # legato (essentially infinite — released on next note or exit)
+}
+
 SLOTS_PER_PAGE = {
     0: list(range(1, 9)),   # Page 1: slots 1-8
     1: list(range(9, 17)),  # Page 2: slots 9-16
@@ -108,11 +119,31 @@ class ArpEditMode(Mode):
         self._arp_page: int = 0
         self._note_length_mode: bool = False
 
-        self._entry_time: float = 0.0
+        # "LENGTH" entry scroll overlay
+        self._length_overlay: bool = False
+        self._length_overlay_start: float = 0.0
+        self._length_scroll_pos: float = 0.0
+        self._length_scroll_last: float = 0.0
+        self._length_overlay_ms: int = 1000
+        self._length_px_per_ms: float = 1.0 / 150.0
+
+        # slot long-press save
+        self._slot_press_rid: int | None = None
+        self._slot_press_time: float = 0.0
+        self._save_flash_slot: int | None = None
+        self._save_flash_start: float = 0.0
+        self._save_flash_ms: int = 1000
+        self._save_flash_on: bool = False
+
+        self._entry_time: float = time.monotonic()
         self._beat_step: int = 0
-        self._beat_last: int = -1
 
         self._active_notes: set[int] = set()
+        self._sound: dict[int, float | None] = {}
+
+    def _step_duration(self) -> float:
+        """Seconds per step. Chase uses 1/2 beat (1/8 note) per step at 4/4."""
+        return 60.0 / max(1.0, self._bpm) / 2.0
 
     def reserves_h_button(self) -> bool:
         return True
@@ -146,9 +177,8 @@ class ArpEditMode(Mode):
     def enter(self):
         self._entry_time = time.monotonic()
         self._beat_step = 0
-        self._beat_last = -1
         self._note_length_mode = False
-        self._active_notes.clear()
+        self._release_all_notes()
         self._render()
 
     def exit(self):
@@ -156,6 +186,97 @@ class ArpEditMode(Mode):
         self.clear()
         self.clear_pages()
         self.commit()
+
+    def tick(self, delta_ms: float):
+        now = time.monotonic()
+
+        if self._save_flash_slot is not None:
+            if (now - self._save_flash_start) * 1000 >= self._save_flash_ms:
+                self._save_flash_slot = None
+            else:
+                new_state = ((now * 2) % 1.0) < 0.5  # ~250ms blink toggle
+                if new_state != self._save_flash_on:
+                    self._save_flash_on = new_state
+                    self._render()
+            if self._save_flash_slot is None:
+                self._render()
+
+        if self._length_overlay:
+            self._advance_length_overlay(now)
+            self._render()
+            return
+
+        self._advance_chase(time.monotonic())
+
+        if self._needs_render:
+            self._needs_render = False
+            self._render()
+
+    def _show_length_overlay(self):
+        self._length_overlay = True
+        self._length_overlay_start = time.monotonic()
+        self._length_scroll_pos = 0.0
+        self._length_scroll_last = time.monotonic()
+        self._render()
+
+    def _advance_length_overlay(self, now: float):
+        dt = (now - self._length_scroll_last) * 1000
+        self._length_scroll_last = now
+        self._length_scroll_pos += dt * self._length_px_per_ms
+
+        if (now - self._length_overlay_start) * 1000 >= self._length_overlay_ms:
+            self._length_overlay = False
+
+    def _advance_chase(self, now: float):
+        sd = self._step_duration()
+        if sd <= 0:
+            return
+        step = int((now - self._entry_time) / sd) % STEP_COUNT
+        if step != self._beat_step:
+            self._beat_step = step
+            self._play_step(step, now)
+            self._needs_render = True
+
+    def _play_step(self, step: int, now: float):
+        self._fire_due_offs(now)
+        interval = self._intervals[step] if step < len(self._intervals) else -1
+        if interval < 0 or interval >= len(self._scale_intervals):
+            return
+        pitch = self._root_note + self._scale_intervals[interval]
+        length = self._lengths[step] if step < len(self._lengths) else DEFAULT_LENGTH
+        mult = LENGTH_MULTIPLIERS.get(length, 1.0)
+        sd = self._step_duration()
+
+        if length >= 8:
+            off_time = None  # legato: hold until replaced or exit
+        else:
+            off_time = now + mult * sd
+
+        for held in list(self._sound):
+            if self._sound[held] is None and held != pitch:
+                self._send_note_off(held)
+
+        if pitch in self._sound:
+            existing = self._sound[pitch]
+            if existing is None:
+                return
+            if off_time is None or off_time > existing:
+                self._sound[pitch] = off_time
+            return
+
+        if self.midi_manager:
+            try:
+                self.midi_manager.send_force([0x90, pitch, 100])
+            except Exception:
+                pass
+        self._active_notes.add(pitch)
+        self._sound[pitch] = off_time
+
+    def _fire_due_offs(self, now: float):
+        for pitch in list(self._sound):
+            off = self._sound[pitch]
+            if off is not None and now >= off:
+                self._send_note_off(pitch)
 
     def handle_grid_event(self, event: GridEvent):
         if not event.pressed:
@@ -185,46 +306,73 @@ class ArpEditMode(Mode):
         self._render()
 
     def handle_control_event(self, event: ControlEvent):
-        is_press = "PRESS" in event.event_type.name
-        if not is_press:
-            return
-
         rid = event.control_id - 100
         if rid < 0 or rid > 7:
             return
 
+        is_press = "PRESS" in event.event_type.name
+        is_release = "RELEASE" in event.event_type.name
+
+        # During note-length mode, A-H set global length on press — no long-press.
         if self._note_length_mode:
+            if is_press:
+                if rid == RIGHT_E:
+                    self._note_length_mode = False
+                    self._length_overlay = False
+                    self._render()
+                elif rid <= RIGHT_H:
+                    self._lengths = [rid - RIGHT_A + 1] * STEP_COUNT
+                    self._render()
+            return
+
+        if is_press:
             if rid == RIGHT_E:
-                self._note_length_mode = False
+                self._note_length_mode = True
+                self._show_length_overlay()
+                return
+            if rid == RIGHT_G:
+                self._arp_page = (self._arp_page - 1) % TOTAL_PAGES
                 self._render()
                 return
-            if rid <= RIGHT_H:
-                self._lengths = [rid - RIGHT_A + 1] * STEP_COUNT
+            if rid == RIGHT_H:
+                self._arp_page = (self._arp_page + 1) % TOTAL_PAGES
                 self._render()
                 return
+
+            # Track slot buttons for long-press save.
+            if rid <= RIGHT_H and rid not in (RIGHT_E, RIGHT_G, RIGHT_H):
+                self._slot_press_rid = rid
+                self._slot_press_time = time.monotonic()
             return
 
-        if rid == RIGHT_E:
-            self._note_length_mode = True
+        if is_release:
+            if self._slot_press_rid is not None:
+                rid_pressed = self._slot_press_rid
+                self._slot_press_rid = None
+                if rid_pressed == rid:
+                    elapsed = (time.monotonic() - self._slot_press_time) * 1000
+                    if elapsed >= self._long_press_ms:
+                        self._handle_slot_save(rid)
+                        return
+                    self._handle_slot_select_by_rid(rid)
+                    return
             self._render()
-            return
 
-        if rid == RIGHT_G:
-            self._arp_page = (self._arp_page - 1) % TOTAL_PAGES
+    def _handle_slot_select_by_rid(self, rid: int):
+        slots = SLOTS_PER_PAGE[self._arp_page]
+        slot = slots[rid]
+        if self._handle_slot_select(slot):
             self._render()
+
+    def _handle_slot_save(self, rid: int):
+        slot = SLOTS_PER_PAGE[self._arp_page][rid]
+        if slot in FACTORY_SLOTS:
             return
-
-        if rid == RIGHT_H:
-            self._arp_page = (self._arp_page + 1) % TOTAL_PAGES
-            self._render()
-            return
-
-        if rid <= RIGHT_H:
-            slots = SLOTS_PER_PAGE[self._arp_page]
-            slot = slots[rid]
-
-            if self._handle_slot_select(slot):
-                self._render()
+        _save_pattern_to_slot(slot, self._intervals, self._lengths, self._pattern_name)
+        self._save_flash_slot = slot
+        self._save_flash_start = time.monotonic()
+        self._save_flash_on = True
+        self._render()
 
     def _handle_slot_select(self, slot: int) -> bool:
         if slot == self._current_slot:
@@ -262,18 +410,17 @@ class ArpEditMode(Mode):
     def _send_note_on(self, note: int):
         if self.midi_manager:
             try:
-                self.midi_manager.send_message("Launchpad Mini",
-                    [0x90, note, 100], target="force")
+                self.midi_manager.send_force([0x90, note, 100])
             except Exception:
                 pass
         self._active_notes.add(note)
 
     def _send_note_off(self, note: int):
         self._active_notes.discard(note)
+        self._sound.pop(note, None)
         if self.midi_manager:
             try:
-                self.midi_manager.send_message("Launchpad Mini",
-                    [0x80, note, 0], target="force")
+                self.midi_manager.send_force([0x80, note, 0])
             except Exception:
                 pass
 
@@ -282,27 +429,33 @@ class ArpEditMode(Mode):
             self._send_note_off(note)
 
     def _preview_step(self, step: int):
-        self._release_all_notes()
+        """Audition a single step when tapping the grid. Uses the step's own length."""
+        self._fire_due_offs(time.monotonic())
         interval = self._intervals[step % len(self._intervals)]
         if interval < 0 or interval >= len(self._scale_intervals):
             return
         semitone = self._scale_intervals[interval]
         note = self._root_note + semitone
-        self._send_note_on(note)
+        length = self._lengths[step % len(self._lengths)] if self._lengths else DEFAULT_LENGTH
+        mult = LENGTH_MULTIPLIERS.get(length, 1.0)
+        sd = self._step_duration()
 
-    def _preview_arp_step(self, step: int):
-        self._release_all_notes()
-        interval = self._intervals[step % len(self._intervals)]
-        if interval < 0 or interval >= len(self._scale_intervals):
+        if length >= 8:
+            off_time = None
+        else:
+            off_time = time.monotonic() + mult * sd
+
+        if note in self._sound and self._sound[note] is not None:
             return
-        semitone = self._scale_intervals[interval]
-        note = self._root_note + semitone
         self._send_note_on(note)
+        self._sound[note] = off_time
 
     def _render(self):
         self.clear()
 
-        if self._note_length_mode:
+        if self._length_overlay:
+            self._render_length_scroll()
+        elif self._note_length_mode:
             self._render_note_length()
         else:
             self._render_pattern_editor()
@@ -319,6 +472,36 @@ class ArpEditMode(Mode):
             lp.send_right_column_led(RIGHT_E, LogicalColor.RED_HIGH)
         else:
             lp.send_right_column_led(RIGHT_E, LogicalColor.RED_HIGH)
+
+    def _render_length_scroll(self):
+        from src.ui.modes.message import FONT_5X5
+        text = "LENGTH"
+        char_w = 6
+        total_width = len(text) * char_w + 8
+        pos = int(self._length_scroll_pos)
+
+        if pos >= total_width:
+            self._length_overlay = False
+            self._note_length_mode = True
+            return
+
+        for col in range(8):
+            strip_pos = pos + col
+            char_idx = strip_pos // char_w
+            if char_idx < 0 or char_idx >= len(text):
+                continue
+            pixel_in_char = strip_pos % char_w
+            if pixel_in_char >= 5:
+                continue
+            ch = text[char_idx]
+            glyph = FONT_5X5.get(ch)
+            if glyph is None:
+                continue
+            for row in range(5):
+                if glyph[row][pixel_in_char] == "1":
+                    gy = 6 - row
+                    if 0 <= gy < 8:
+                        self.grid.set_cell(col, gy, LogicalColor.RED_HIGH)
 
     def _render_pattern_editor(self):
         for step in range(STEP_COUNT):
@@ -366,6 +549,11 @@ class ArpEditMode(Mode):
                 continue
 
             slot = slots[i] if i < len(slots) else 1
+
+            if slot == self._save_flash_slot and self._save_flash_on:
+                self.controller.send_right_column_led(i, LogicalColor.GREEN_HIGH)
+                continue
+
             is_selected = (slot == self._current_slot)
             is_factory = (slot in FACTORY_SLOTS)
             has_pattern = _slot_has_pattern(slot)

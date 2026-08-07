@@ -70,6 +70,8 @@ The 3 factory patterns (normal, chordal, octaves) occupy slots A, B, C on page 1
 
 Factory slots A/B/C are read-only. Long-pressing them has no effect — no blink, no save. Only user slots D-H accept saves.
 
+> **Implemented (BUILD_LOG #30):** long-press save is live. Slot dispatch now resolves on release — short (<500ms) selects, long (≥500ms) saves with a ~250ms GREEN/OFF blink for 1s. Factory slots still block the save.
+
 ### Saving a Pattern
 
 1. Long-press any A-H button (500ms) while in ARP Edit Mode
@@ -189,7 +191,7 @@ row  ┌────┬────┬────┬────┬────
 
 Step duration at default ARP rate (1/8 note at current BPM). At 120 BPM: step = 250ms.
 
-Lengths 6-8 span multiple steps, creating a legato effect where notes overlap. The MIDI note stays on across step boundaries.
+Lengths 6-8 span multiple steps, creating a legato effect where notes overlap. The MIDI note stays on across step boundaries. **Implemented (BUILD_LOG #28):** playback is fully length-aware. Each step's note-off is scheduled at `now + multiplier × step_duration`. Levels 6-7 overlap into following steps; level 8 (legato) holds indefinitely until replaced by a different pitch or released on exit. A tick-driven chase loop (`_advance_chase`) schedules note-ons/offs based on elapsed time since entry (no drift) and `_fire_due_offs` retires finished notes.
 
 ### Setting Note Lengths
 
@@ -215,6 +217,8 @@ Lengths 6-8 span multiple steps, creating a legato effect where notes overlap. T
 ### Entry Animation
 
 When entering note-length mode, the grid displays scrolling text **"LENGTH"** in **RED_HIGH** for 1 second before showing the bar-graph. This provides visual confirmation of what mode you're in. The scrolling text uses the standard 5×5 font, scrolling from right to left across the grid at ~150ms per pixel. After 1s, the text fades out and the bar-graph appears.
+
+**Implemented (BUILD_LOG #28):** the entry scroll accepts the `LENGTH` string, renders at `RED_HIGH` only, scrolls right-to-left at ~150ms/px, and completes after 1s when the bar-graph appears. A grid/control interaction during the animation immediately swaps to the bar-graph.
 
 ### Navigation
 
