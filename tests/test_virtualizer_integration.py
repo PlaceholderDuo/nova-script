@@ -116,11 +116,11 @@ def test_menu_mode():
 
     menu = MenuMode(logical_grid, v.controller, on_mode_select=on_mode_select)
     menu_items = [
-        {"label": "SEQ", "mode": "sequencer", "color": "AMBER_HIGH"},
-        {"label": "MIX", "mode": "mixer", "color": "GREEN_HIGH"},
-        {"label": "FX", "mode": "effects", "color": "RED_HIGH"},
-        {"label": "PERF", "mode": "performance", "color": "AMBER_HIGH"},
-        {"label": "DEV", "mode": "device", "color": "GREEN_HIGH"},
+        {"label": "SEQ", "mode": "sequencer", "color": "AMBER_HIGH", "x": 0, "y": 7},
+        {"label": "MIX", "mode": "mixer", "color": "GREEN_HIGH", "x": 1, "y": 7},
+        {"label": "FX", "mode": "effects", "color": "RED_HIGH", "x": 2, "y": 7},
+        {"label": "PERF", "mode": "performance", "color": "AMBER_HIGH", "x": 3, "y": 7},
+        {"label": "DEV", "mode": "device", "color": "GREEN_HIGH", "x": 4, "y": 7},
     ]
     menu.set_items(menu_items)
     menu.enter()
@@ -133,8 +133,8 @@ def test_menu_mode():
     colors_at_pads = {}
     for i, item in enumerate(menu_items):
         expected_color = LogicalColor[item["color"]]
-        x = i % 8
-        y = i // 8
+        x = item["x"]
+        y = item["y"]
         actual = logical_grid.get_cell(x, y)
         colors_at_pads[item["label"]] = actual
         assert actual == expected_color, (
@@ -144,9 +144,9 @@ def test_menu_mode():
     print(f"  ✓ All 5 menu pads have correct colors")
 
     # Simulate tapping a menu pad
-    print("\n  Simulate: tap pad (0,0) → select Sequencer...")
+    print("\n  Simulate: tap pad (0,7) → select Sequencer...")
     v.controller._on_grid_event = lambda e: menu.handle_grid_event(e)
-    v.tap(0, 0)
+    v.tap(0, 7)
 
     assert mode_switched == ["sequencer"], f"Expected ['sequencer'], got {mode_switched}"
     print(f"  ✓ Mode switched to: {mode_switched[0]}")

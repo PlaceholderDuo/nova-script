@@ -706,6 +706,7 @@ function updateInfoPanel() {
 
   const mode = state.mode || '';
   const page = state.page || '';
+  const subpage = state.subpage || '';
   const rightCol = state.right_col || [];
   let html = '';
 
@@ -717,7 +718,7 @@ function updateInfoPanel() {
         ['B', 'Page indicator (page 2)'],
         ['C-H', 'Unused'],
       ],
-      grid: 'Row 7: Track mutes (GREEN=active, AMBER=track, RED=muted). Rows 1-6: FX state. Top row 1-8: toggle track mutes. Right 1-5: FX toggles.'
+      grid: 'Row 7: Track mutes (GREEN=active, AMBER=track, RED=muted). Rows 1-6: FX state. Top row 1-8: toggle track mutes. Right 1-5: FX toggles. Tuner: Button A toggles strobe tuner; motion-band (RED way-off / AMBER hunting / GREEN locked) driven by /nova/tuner cents. FX taps flash a letter hint (D/H/A/T).'
     },
     'instrument': {
       title: 'Instrument Mode',
@@ -734,14 +735,24 @@ function updateInfoPanel() {
     'arp_edit': {
       title: 'ARP Edit Mode',
       right: [
-        ['A-C', 'Factory patterns (read-only)'],
-        ['D', 'User pattern (press=load, hold=save)'],
-        ['E', 'Note-length mode'],
-        ['F', 'User pattern'],
-        ['G', 'Page up'],
-        ['H', 'Page down'],
+        ['A', 'Pattern slot (press=load, hold=save)'],
+        ['B', 'Pattern slot (press=load, hold=save)'],
+        ['C', 'Pattern slot (press=load, hold=save)'],
+        ['D', 'Pattern slot (press=load, hold=save)'],
+        ['E', 'Note-length mode (LENGTH entry anim)'],
+        ['F', 'Pattern slot (press=load, hold=save)'],
+        ['H', 'Page down (wrap)'],
+        ['G', 'Page up (wrap)'],
       ],
-      grid: 'Row 0: Beat chase (AMBER). Rows 1-7: Scale degrees. Press pad=set note. Press lit pad=clear. Top-1: exit.'
+      grid: 'Row 0: Beat chase (AMBER). Rows 1-7: Scale degrees. Press pad=set note, press lit=clear. ARP preview plays with note-lengths: 1-4 short, 5 full step, 6-7 overlap (legato), 8 = legato hold.',
+    },
+    'arp_edit_note_length': {
+      title: 'ARP Edit — Note Length',
+      right: [
+        ['A-H', 'Set ALL 8 steps to length A=1 … H=8'],
+        ['E', 'Exit note-length (back to pattern)'],
+      ],
+      grid: 'BAR-GRAPH: each column = an ARP step, bar height = note length (1-8). Press pad (x,y) sets step x to length y+1. RED bars.',
     },
     'clip_launcher': {
       title: 'Clip Launcher',
@@ -755,7 +766,7 @@ function updateInfoPanel() {
     },
     'mixer': {
       title: 'Mixer',
-      grid: '8 tracks × 7-row vertical faders. Press pad=set level. Bottom=0%, top=100%. Right col=bank/mute.'
+      grid: '8 tracks × faders + live VU. Rows 1-6: faders (GREEN=set level, AMBER=live signal, RED flash=peak/clip). Row 0=reverb send, Row 7=mute. Master clip flashes bottom row red.'
     },
     'menu': {
       title: 'Menu',
@@ -773,7 +784,8 @@ function updateInfoPanel() {
     },
   };
 
-  const info = HELP[mode] || HELP['performance'];
+  const lookMode = (mode === 'arp_edit' && subpage === 'note_length') ? 'arp_edit_note_length' : mode;
+  const info = HELP[lookMode] || HELP['performance'];
   html = '<h3>' + info.title + '</h3>';
   if (page && mode === 'instrument' && page === 'offset_select') {
     html += '<p style="color:#f9a03f">Row offset overlay active. Tap top row 1-5 to select offset.</p>';
@@ -781,8 +793,8 @@ function updateInfoPanel() {
   if (page && mode === 'screensaver') {
     html += '<p style="color:#f9a03f">Active mode: ' + ['Heart', 'Waves', 'Glimmer'][parseInt(page) || 0] + '</p>';
   }
-  if (page && mode === 'arp_edit') {
-    html += '<p style="color:#f9a03f">' + page.replace('_', ' ') + '</p>';
+  if (page && (mode === 'arp_edit' || lookMode === 'arp_edit_note_length')) {
+    html += '<p style="color:#f9a03f">' + page.replace('_', ' ') + (subpage === 'note_length' ? ' · Note-Length mode' : '') + '</p>';
   }
 
   if (info.right) {

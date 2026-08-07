@@ -19,30 +19,47 @@ def test_startup_wave_virtual():
     print("TEST: Startup Wave")
     print("=" * 60)
 
-    v = VirtualLaunchpad()
-    v.on_connect()
-    logical = LogicalGrid(8, 8)
+    import src.ui.startup_wave as startup_wave_mod
+    monotonic_time = [0.0]
 
-    def commit():
-        for x, y in logical.dirty_cells():
-            color = logical.get_cell(x, y)
-            v.controller.set_grid_color(x, y, color)
+    def fake_monotonic():
+        return monotonic_time[0]
 
-    logical.set_on_cell_changed(lambda x, y, c: None)
+    orig_monotonic = startup_wave_mod.time.monotonic
+    startup_wave_mod.time.monotonic = fake_monotonic
 
-    wave = StartupWave(logical, v.controller)
-    wave._commit = commit
-    wave.start()
+    try:
+        v = VirtualLaunchpad()
+        v.on_connect()
+        logical = LogicalGrid(8, 8)
 
-    sim_time = wave._start
-    frames = 0
-    max_cells_lit = 0
-    while wave.tick(now=sim_time):
-        frames += 1
-        sim_time += 0.05
-        lit = sum(1 for y in range(8) for x in range(8) if logical.get_cell(x, y) != LogicalColor.OFF)
-        max_cells_lit = max(max_cells_lit, lit)
+        def commit():
+            for x, y in logical.dirty_cells():
+                color = logical.get_cell(x, y)
+                v.controller.set_grid_color(x, y, color)
 
+        logical.set_on_cell_changed(lambda x, y, c: None)
+
+        wave = StartupWave(logical, v.controller)
+        wave._commit = commit
+        monotonic_time[0] = 0.0
+        wave.start()
+
+        frames = 0
+        max_cells_lit = 0
+        while True:
+            if not wave.tick():
+                break
+            frames += 1
+            if frames > 1000:
+                break
+            lit = sum(1 for y in range(8) for x in range(8) if logical.get_cell(x, y) != LogicalColor.OFF)
+            max_cells_lit = max(max_cells_lit, lit)
+            monotonic_time[0] += 0.02
+    finally:
+        startup_wave_mod.time.monotonic = orig_monotonic
+
+    assert max_cells_lit > 0, "Startup wave should light cells"
     v.assert_all_off()
     print(f"  ✓ Frames: {frames}, max cells lit: {max_cells_lit}")
     print(f"  ✓ Grid clean after animation")
@@ -86,12 +103,12 @@ def test_overlay_idle_screensaver():
     assert overlay.active == OverlayPriority.ACTIVE_MODE, "Should still be in mode"
     print("  ✓ Not screensaver at 0.5s idle")
 
-    # After 1.2s idle → screensaver (uses image 0, "waves")
+    # After 1.2s idle → screensaver (mode "waves")
     overlay.tick(16, now=overlay._idle_since + 1.2)
     assert overlay.active == OverlayPriority.SCREENSAVER, f"Expected screensaver, got {overlay.active}"
-    overlay._screensaver_image = 5  # all_amber
-    overlay._render_screensaver_image()
-    print(v.render("Screensaver active (all_amber)"))
+    overlay._active_screensaver_mode = 1  # waves
+    overlay._render_screensaver()
+    print(v.render("Screensaver active (waves)"))
     print("  ✓ Auto-entered screensaver after idle timeout")
 
     # First button press → consumed (dismiss, but stay in screensaver mode)
@@ -224,9 +241,9 @@ def test_overlay_hud():
 
 
 def test_overlay_screensaver_picker():
-    """Screensaver image selection via simulated buttons."""
+    """Screensaver mode selection via simulated right-column buttons."""
     print("=" * 60)
-    print("TEST: Screensaver Image Pick")
+    print("TEST: Screensaver Mode Pick")
     print("=" * 60)
 
     v = VirtualLaunchpad()
@@ -246,31 +263,30 @@ def test_overlay_screensaver_picker():
     overlay._commit = commit
     overlay.start()
 
-    # Enter screensaver (shows last image = 0, "waves")
+    # Enter screensaver (default mode at index 1 = "waves")
     overlay.trigger_screensaver()
-    overlay._screensaver_image = 0
+    overlay_modes = overlay._screensaver_modes
+    assert "waves" in overlay_modes
+    overlay._active_screensaver_mode = overlay_modes.index("waves")
+    overlay._render_screensaver()
+    print(v.render("Screensaver: mode 'waves'"))
+    print("  ✓ Screensaver entered on 'waves'")
 
-    # Change image programmatically (simulates picking from image store)
-    overlay._screensaver_image = 1  # heart
-    overlay._render_screensaver_image()
-    print(v.render("Screensaver: image #1 (heart)"))
-    print("  ✓ Changed screensaver to heart image")
+    # Switch mode via right-column control (simulates button press)
+    heart_idx = overlay_modes.index("heart")
+    assert isinstance(overlay.handle_control_event(
+        type("E", (), {"control_id": 100 + heart_idx,
+                       "event_type": type("ET", (), {"name": "FUNCTION_PRESS"})})()
+    ), bool)
+    assert overlay._active_screensaver_mode == heart_idx
+    overlay._render_screensaver()
+    print(v.render("Screensaver: mode 'heart'"))
+    print("  ✓ Switched to 'heart' via right column")
 
-    # Assign to quick slot
-    store.set_quick_slot(3, 1)
-    assert store.get_quick_slot(3) == 1
-    print("  ✓ Heart assigned to quick slot 3 (top button 4)")
-
-    # Verify quick slots persist
-    overlay._screensaver_image = store.get_quick_slot(3) or 0
-    assert overlay._screensaver_image == 1
-    print("  ✓ Quick slot 3 → image #1 (heart)")
-
-    # Cycle through images
-    overlay._screensaver_image = 2  # checker
-    overlay._render_screensaver_image()
-    print(v.render("Screensaver: image #2 (checker)"))
-    print("  ✓ Switched to checker pattern")
+    # Cycle to another mode
+    overlay._active_screensaver_mode = 2  # glimmer
+    overlay._render_screensaver()
+    print("  ✓ Cycled to 'glimmer'")
 
     tmp.unlink(missing_ok=True)
     print()

@@ -62,6 +62,9 @@ class VirtualMidiManager:
     def send_message(self, device_name: str, message: list[int], target: str = "main"):
         self.sent_messages.append(list(message))
 
+    def send_force(self, message: list[int]):
+        self.sent_messages.append(list(message))
+
     def register_device(self, name: str, input_callback):
         pass
 

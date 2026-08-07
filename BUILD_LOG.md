@@ -2133,3 +2133,177 @@ Volume: float 0.0-1.0. Bypass: 0=enabled, 1=disabled. Preset: int 1-6.
 - `docs/BUTTON_REFERENCE.md` — Updated Performance + Mixer sections
 - `docs/PAD-NAVIGATION-MANUAL.md` — Updated Performance + Mixer sections
 - `tests/test_performance_mode.py` — New: 37-assertion test suite
+
+## Entry #28 — 2026-08-06 — ARP Edit: Live Legato Playback (note-lengths 6-8)
+
+V1.2 of the ARP editor note-length system. Note-lengths now drive actual MIDI playback instead of being visual-only. Previously the ARP preview was fully staccato (release-all-then-attack) and `_beat_step` never advanced live, so lengths 6-8 did nothing audibly. This entry adds a real tempo-driven playback loop with length-aware note-offs.
+
+### Behavior
+- **Live chase loop**: `tick()` → `_advance_chase()` computes the current step from elapsed time since entry (`int((now-entry)/step_dur) % 8`, no cumulative drift — per vision A5). Each step boundary fires the step's note.
+- **Length-aware offs**: each played step gets its note-off scheduled at `now + multiplier * step_dur`. Short lengths (1-4) release within the step; length 5 releases at the next boundary; lengths 6-7 (dot/quarter) overlap into following steps.
+- **Legato (length 8)**: `off_time = None` → note is held indefinitely and only released when a *different* pitch is played (replace) or on exit/release-all. Same-pitch legato stays sounding (no re-attack → no note pileup). This directly satisfies vision risk A4 mitigation.
+- **Throwd scheduling**: `_fire_due_offs()` runs each tick to retire notes whose off-time has arrived, keeping `_voice`/`_active_notes` lean and preventing MIDI note pileups.
+- **Grid-tap audition** (`_preview_step`) now uses the tapped step's own length instead of instant release-all.
+- Removed dead `_preview_arp_step`.
+
+### Files Changed
+- `src/ui/modes/arp_edit.py` — Live chase loop, note-off scheduler, legato replace logic, length-aware preview; removed dead method
+- `tests/test_arp_edit.py` — 5 new tests (beat advance, staccato single-step, legato hold, legato no-stacking, short-note due release)
+
+Test result: **ALL ARP EDIT MODE TESTS PASSED** (8 original + 5 new).
+
+## Entry #29 — 2026-08-06 — ARP Edit: "LENGTH" Entry Scroll Animation
+
+v2 deferred item #1 of the ARP note-length system. When entering note-length sub-mode via E, the grid now plays a 1-second scrolling "LENGTH" text overlay (RED_HIGH) before the bar-graph appears — visual confirmation of the mode, as specified in the ARP vision doc.
+
+### Behavior
+- On E press (entering note-length mode), `_show_length_overlay()` activates the overlay.
+- `tick()` prioritizes the overlay: while active, `_advance_length_overlay()` scrolls the `LENGTH` glyph across the grid right-to-left at ~150ms/px, rendering each frame instead of the bar-graph.
+- The overlay ends after `_length_overlay_ms` (1000ms), handing off to the standard bar-graph.
+- Any grid/control interaction during the animation immediately shows the bar-graph (the note-length handler calls `_render()` directly).
+
+### Files Changed
+- `src/ui/modes/arp_edit.py` — Overlay state (`_length_overlay*`), `_show_length_overlay`, `_advance_length_overlay`, `_render_length_scroll` (RED_HIGH 5×5 font), tick branch
+- `tests/test_arp_edit.py` — 3 new tests (overlay activates on E, draws RED-only pixels, times out to bars)
+
+Test result: **ALL ARP EDIT MODE TESTS PASSED** (16 total).
+
+## Entry #30 — 2026-08-06 — ARP Edit: Long-Press A-H Save to Slot
+
+v2 deferred item #2 of the ARP note-length system. Long-pressing a slot button (A-D, F) in ARP Edit Mode now saves the current pattern to that slot with a 1s GREEN blink confirmation. Short press still selects/loads. Factory slots A/B/C remain read-only (save silently blocked).
+
+### Behavior
+- The slot action moves from press to **release** so short vs long can be distinguished:
+  - **Short release** (< `_long_press_ms`) → `_handle_slot_select_by_rid()` loads the pattern (existing behavior).
+  - **Long release** (≥ 500ms) → `_handle_slot_save()` writes `config/arp_patterns/user_XX.json`, then arms a flash.
+- `_slot_press_rid`/`_slot_press_time` track the in-progress hold; E/G/H and note-length-mode presses are unchanged (press-on, no long-press).
+- **Save flash:** `tick()` toggles the target slot LED between GREEN_HIGH/OFF (~250ms) for 1s; `_render_right_column()` draws the flash slot in GREEN. Non-factory only.
+- Factory slots (1,2,3) short: `_handle_slot_save` returns immediately — no save, no flash (read-only per spec).
+- Grid-tap preview and note-length sub-mode are unaffected.
+
+### Files Changed
+- `src/ui/modes/arp_edit.py` — press-tracking fields, release-based slot dispatch, `_handle_slot_save`, `_handle_slot_select_by_rid`, flash blink in tick + right-column render
+- `tests/test_arp_edit.py` — 5 new tests (short select, dispatch, long save, factory protected, flash LED)
+
+Test result: **ALL ARP EDIT MODE TESTS PASSED** (20 total).
+
+## Entry #31 — 2026-08-07 — Performance Routing Hardening: Akai Force, Clock, ARP Exit
+
+Full audio-path audit before the live show. The engine previously claimed to route to the Force but sent to a never-registered port, so no sound. All blockers fixed and locked with tests.
+
+### B1 — Akai Force MIDI Output
+`MidiManager` gained `force_device`, `register_force_output(port_pattern)` (registers the Force as a normal output-only device on the Live system), and `send_force(message)`. All instrument/ARP/sequencer/clip note-on/off sites now send through `send_force` (LEDs still stay on the Launchpad). Force device name is read from `midi.force_output.port_name` (default.yaml) with fallback to `midi.outputs.force`.
+
+### B2 — Sequencer / Clip Note-Offs
+Previously the sequencer never sent note-offs (stuck notes). Tick now sends note-off for the PRIOR step and note-on for the CURRENT step each tick. `clip_launcher._stop_output` routes through force. Fixed an indentation bug in clip launcher `_stop_output`.
+
+### B3 — BPM Clock Feed
+Reaper BPM reaches the Force two ways: OSC beat → `feed_osc_beat(position)` (beat handler), and MIDI realtime 0xF8 → `feed_midi_clock()` in the event loop. Both drive the scheduler.
+
+### B4 — ARP Exit Button
+ARP Edit exit moved from top-row control 201 (top-row 2) to 200 (top-row 1, the natural "exit" on the left). Falls back to whatever top-row button is active.
+
+### Tests
+- `tests/test_midi_routing.py` (new): send_force, register_force_output, units, seq note-off parity (5).
+- `tests/test_bpm_clock_feed.py` (new): OSC beat + MIDI clock 0xF8 both fire (4).
+- `tests/test_arp_edit.py`: added `test_exit_button_is_top_row_one` (21 total).
+All GREEN via `.venv/bin/python`.
+
+## Entry #32 — 2026-08-07 — Mixer Live VU + Performance Stroke Tuner Needle
+
+Built out the "hands-off-computer" aux features so the computer can stay out of the evidence.
+
+### Mixer Mode — Live VU
+- Added `set_track_vu / set_master_vu` accessors, VU/peak state, `_vu_fall_ms` LED holding (300ms).
+- `_render()` per column: AMBER = live signal rising from bottom, GREEN = set fader level (marker), RED at top row = peak/clip persistent flash (`_vu_peak >= 0.98`), and master clip flashes mute row red.
+- OSC: `/nova/track/{n}/vu` + `/nova/master/vu` (bridge) → engine → `mixer.set_track_vu / set_master_vu`. Mixer render wiring done (existing wire in engine lines ~419-429).
+
+### Performance Mode — tuner receives real cents
+- `update_tuner(cents, channel)` no longer a no-op: stores cents/channel and marks dirty. Added `start_tuner / stop_tuner`.
+- Active tuner now shows a live needle: column clamped cents/50 + center, GREEN when `|cents| < 1` (in-tune), AMBER within 30c, RED beyond; 8×8 strobe fills the rest.
+- `handle_grid_event` exiting tuner now goes through `stop_tuner()` (clean exit anim).
+
+### Virtualizer + Docs
+- `tools/novation-virtualizer.html`: mixer help documents VU/fader/hold; performance help documents tuner toggle + needle.
+- OSC contract `/nova/tuner` (cents, channel) already present in namespace + bridge.
+
+All suites GREEN (`.venv/bin/python`): test_performance_mode, test_bpm_clock_feed, test_midi_routing, test_arp_edit, test_combo_detector.
+
+## Entry #33 — 2026-08-07 — Performance Tuner: Motion-Band Strobe (proven design)
+
+Replaced the static needle tuner with a motion-band strobe, per the proven "strobe = motion, not precision" principle (matches mod.dev, Peterson, Chroma/Chromatic tuner design: "less it moves, more you're in tune").
+
+### Design
+- A 2-column-wide vertical band sweeps left↔right across the grid, bouncing at the edges.
+- Band SPEED is proportional to |cents| (distance from in-tune), smoothed via lerp in `_advance_tuner_band`. As the player tunes closer the band decelerates and visually glides to a stop.
+- Color is the LOCK state: RED when way off (>20¢), AMBER while hunting (3–20¢), GREEN when locked (|cents|<3 AND speed<0.4).
+- Background keeps a subtle animated strobe shimmer (`_tuner_phase`) so the sweep reads clearly against a live backdrop.
+
+### Constants (source of truth for the LSM/iPhone port)
+`TUNER_SPEED_PER_CENT=0.18`, `MAX_TUNER_SPEED=7.0`, `BAND_MIN_X=0.6`, `BAND_MAX_X=6.4`, `BAND_WIDTH=1.5`, `LOCK_CENT=3.0`, `NEAR_CENT=20.0`.
+
+### Files Changed
+- `src/ui/modes/performance.py` — band state, `_advance_tuner_band()`, rewritten `_render_tuner()`, tuner constants
+- `tests/test_performance_mode.py` — `test_tuner_motion()` (in-tune green, way-off red, re-lock after settle)
+
+Test result: **ALL PERFORMANCE MODE TESTS PASSED** (incl. new tuner motion).
+
+## Entry #34 — 2026-08-07 — LSM Handoff: HD iPhone Tuner + REAPER pitch feed
+
+Created the handoff doc for the Live Show Manager session to port the proven motion-band tuner to the iPhone's full-color display and wire it to REAPER's tuner via the standard OSC path.
+
+- `~/Documents/projects/live-stage-hud/ai-handoff/handoff-8-tuner-motion.txt` — full spec: motion-band behavior + constants to port verbatim, iPhone page/CSS/rAF spec, server `/nova/tuner` routing snippet, and a "probe first" plan to nail ONE working REAPER→OSC pitch feed (JSFX/control-surface) before building the UI. Phone degrades gracefully to "NO SIG" on missing feed.
+
+## Entry #35 — 2026-08-07 — Performance Mode: FX Letter Hints (non-blocking overlays)
+
+FX tap feedback for the "hands-off-computer" live rig, matching the Instrument Mode hint pattern.
+
+### Behavior
+- Any FX preset or disable press shows a 300ms 5×5 letter overlay (first letter of the FX name: D=Delay, H=Harmony, A=Amp&Drv) using the font in `src/ui/modes/message.py`.
+- Hints are non-blocking — pad presses and FX continue normally; overlay clears on expiry during the next `_render()`.
+- Configurable via engine's existing `set_hints_config(enabled, color)` feed (`ui.hints_enabled` / `ui.hints_color` from config). Default AMBER_HIGH.
+
+### Files Changed
+- `src/ui/modes/performance.py` — hint state, `_show_hint`, `_show_fx_hint`, `_render_fx_hint`, trigger in `_handle_fx_press` (both disable toggle + preset select), overlay draw in `_render()`
+- `set_hints_config` now honors the color string (resolves to LogicalColor).
+- `tests/test_performance_mode.py` — `test_fx_hints` (armed on press, expires, disable toggles also hint, suppressed when disabled). Base-color tests opted out via `set_hints_config(False)`.
+- `tools/novation-virtualizer.html` — performance help documents the hint letters + tuner band.
+
+Test result: **ALL PERFORMANCE MODE TESTS PASSED.**
+
+## Entry #36 — 2026-08-07 — TUI Broadcast Loop Fix (--tui crash)
+
+`python -m src.main live-show --tui` crashed at startup because `Engine.start()` called `asyncio.create_task(self._tui_broadcast_loop())` but no such method existed, and the `_virt_sync_loop` it did define held the TUI push loop UNREACHABLE behind an infinite websocket-sync `while` loop.
+
+### Fix
+- Split the single combined coroutine into two separate tasks:
+  - `_virt_sync_loop` — visualizer websocket sync only (1s poll).
+  - `_tui_broadcast_loop` — TUI grid_state publish (50ms, grid snapshot + mode + device status).
+- Both are spawned independently in `Engine.start()`.
+
+Test: engine imports + both methods resolve; all 5 suites GREEN.
+
+## Entry #37 — 2026-08-07 — Full Suit Greening + Clip Launcher Bug Fix
+
+Regressed every stale test suite to green again and fixed two latent bugs found during regression.
+
+### ClipLauncherMode: track-stop row unreachable (real bug)
+`handle_grid_event` checked `_clip_colors[idx] == OFF` BEFORE the `y == 0` stop-track branch. The bottom scene (y=0) is empty by default, so the OFF guard returned early and the track-stop row never fired. Moved `y == 0 → _stop_track(x)` above the OFF check.
+
+### Stale test repairs
+- `test_edge_cases` clip stress test tapped `y in (1,2)` — those map to scenes 5/6 which are EMPTY → "got 0 playing". Rewrote to drive active scene 0/1 (y 7/6), scene launch via right-col control 107 (scene 0; control 100 = scene 7 = empty), and long-press clear at an active scene coords.
+- `test_overlay_system` — sunrise wave test needed clock fanback (`fake-monotonic` stub) + frame-capped `tick()`; screensaver picker rewritten to named-mode switching via right-column control (`100+idx`).
+- `test_chill_mode` — removed dead code referencing unimported `LogicalColor`.
+- `test_virtualizer_integration` — menu items keyed by x/y, tap at (0,7) now matches.
+
+Test: all 11 suites GREEN (performance, arp_edit, bpm_clock, midi_routing, combo_detector, edge_cases, overlay, chill_mode, virtualizer, combo_hardware, fireworks).
+
+## Entry #38 — 2026-08-07 — Tuner Button A/B Wiring (right column)
+
+`PerformanceMode.handle_control_event` was a bare `pass`. Wired per PERFORMANCE_VIEW_VISION_DOC:
+- **Button A (control 107, row 7):** strobe tuner toggle for active channel.
+- **Button B (control 106, row 6):** cycles active channel GTR↔VOX. If tuner is live, retargets tuner channel + resets cents/speed/band.
+
+Added `set_active_channel()` API + `_active_channel` state (default GTR), and `test_tuner_control_buttons` covering: A toggles in/out, B cycles w/o starting tuner, A targets active channel, B retargets live tuner + resets, releases ignored.
+
+Test: all 11 suites GREEN.
