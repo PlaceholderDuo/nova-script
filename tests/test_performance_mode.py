@@ -3,9 +3,10 @@ Unit test for Performance Mode — volume bars, FX presets, disable toggles.
 """
 import sys
 sys.path.insert(0, ".")
+import time
 
 from src.ui.modes.performance import PerformanceMode, CHANNELS, FX_COUNT, NUM_PADS, MAX_VOL, MIN_VOL
-from src.controllers.base import GridEvent, LogicalColor
+from src.controllers.base import GridEvent, LogicalColor, ControlEvent, EventType
 
 
 class MockGrid:
@@ -142,6 +143,7 @@ def test_fx_preset():
     print("\n=== FX Preset Tests ===")
     grid = MockGrid()
     pm = PerformanceMode(grid, MockController(), osc_bridge=None)
+    pm.set_hints_config(False)
     pm.enter()
     pm._render()
 
@@ -186,6 +188,7 @@ def test_fx_disable():
     print("\n=== FX Disable Tests ===")
     grid = MockGrid()
     pm = PerformanceMode(grid, MockController(), osc_bridge=None)
+    pm.set_hints_config(False)
     pm.enter()
     pm._render()
 
@@ -290,6 +293,124 @@ def test_independent_channels():
     print(f"  GTR Delay enabled, VOX Delay still disabled ✓")
 
 
+def test_tuner_motion():
+    print("\n=== Tuner Motion-Band Tests ===")
+    grid = MockGrid()
+    pm = PerformanceMode(grid, MockController(), osc_bridge=None)
+
+    pm.start_tuner("GTR")
+    pm._tuner_state = "active"
+    pm._tuner_active = True
+
+    pm.update_tuner(0.0, "GTR")
+    pm.tick(16)
+    pm._render()
+    locked_colors = [c for c in grid._cells.values() if c.name == "GREEN_HIGH"]
+    assert len(locked_colors) > 0, "In-tune should render GREEN_HIGH band"
+    print(f"  cents=0 → GREEN_HIGH band present ✓")
+
+    pm.update_tuner(70.0, "GTR")
+    for _ in range(30):
+        pm.tick(16)
+    pm._render()
+    red_colors = [c for c in grid._cells.values() if c.name == "RED_HIGH"]
+    assert len(red_colors) > 0, "Way off-tune should render RED_HIGH band"
+    print(f"  cents=70 → RED_HIGH band present ✓")
+
+    pm.update_tuner(0.0, "GTR")
+    for _ in range(50):
+        pm.tick(16)
+    pm._render()
+    locked_colors = [c for c in grid._cells.values() if c.name == "GREEN_HIGH"]
+    assert len(locked_colors) > 0, "Returning to in-tune should re-lock GREEN_HIGH"
+    print(f"  cents=0 after settle → GREEN_HIGH band re-locked ✓")
+
+
+def test_fx_hints():
+    print("\n=== FX Hint Tests ===")
+    grid = MockGrid()
+    pm = PerformanceMode(grid, MockController(), osc_bridge=None)
+
+    pm.enter()
+    pm._render()
+    pm.set_hints_config(True, "AMBER_HIGH")
+
+    def amber_count():
+        return sum(1 for c in grid._cells.values() if c.name == "AMBER_HIGH")
+
+    pm._handle_fx_press("GTR", 1, pm._fx_preset_row(0))
+    pm._render()
+    n_after = amber_count()
+    n_before = amber_count()
+    assert pm._hint_text != "", "Hint text should be set after FX press"
+    assert n_after >= n_before and pm._hint_text, "FX press should arm a hint"
+    print(f"  FX preset press → hint '{pm._hint_text}' armed ({n_after} AMBER cells) ✓")
+
+    time.sleep(0.4)
+    pm._render()
+    assert time.monotonic() >= pm._hint_expiry, "Hint should have expired"
+    assert pm._hint_text != "", "Expired hint still tracked until next render"
+    print(f"  Hint expires after 0.3s ✓")
+
+    pm._hint_text = ""
+    pm._hint_expiry = 0
+    pm._handle_fx_press("GTR", 1, pm._fx_disable_row(0))
+    pm._render()
+    assert pm._hint_text != "", "FX disable toggle should also arm hint"
+    print(f"  FX disable → hint '{pm._hint_text}' ✓")
+
+    pm._hint_text = ""
+    pm._hint_expiry = 0
+    pm.set_hints_config(False)
+    pm._handle_fx_press("GTR", 1, pm._fx_preset_row(0))
+    pm._render()
+    assert pm._hint_text == "", "Hints disabled should suppress hint"
+    print(f"  hints_enabled=False → no hint armed ✓")
+
+
+def test_tuner_control_buttons():
+    print("\n=== Tuner Control Button Tests ===")
+    grid = MockGrid()
+    pm = PerformanceMode(grid, MockController(), osc_bridge=None)
+    pm.enter()
+
+    pm.handle_control_event(ControlEvent(107, 127, EventType.FUNCTION_PRESS))
+    assert pm._tuner_state in ("intro", "active"), "Button A press should start tuner"
+    assert pm._tuner_channel == "GTR", "Default active channel is GTR"
+    print(f"  Button A → started tuner (channel={pm._tuner_channel}, state={pm._tuner_state}) ✓")
+
+    pm._tuner_state = "active"
+    pm._tuner_active = True
+    pm.handle_control_event(ControlEvent(107, 127, EventType.FUNCTION_PRESS))
+    assert pm._tuner_state == "exit", "Button A second press should stop tuner"
+    print(f"  Button A again → stopped (state={pm._tuner_state}) ✓")
+
+    pm._tuner_state = "off"
+    pm._tuner_active = False
+    pm.handle_control_event(ControlEvent(106, 127, EventType.FUNCTION_PRESS))
+    assert pm._active_channel == "VOX", "Button B should cycle active channel to VOX"
+    assert pm._tuner_state == "off", "Button B alone should not start tuner"
+    print(f"  Button B → active channel VOX (tuner stays off) ✓")
+
+    pm.handle_control_event(ControlEvent(107, 127, EventType.FUNCTION_PRESS))
+    assert pm._tuner_state in ("intro", "active"), "Button A should start tuner"
+    assert pm._tuner_channel == "VOX", "Tuner targets active channel VOX"
+    print(f"  Button A → tuner for VOX (state={pm._tuner_state}) ✓")
+
+    pm._tuner_state = "active"
+    pm._tuner_active = True
+    pm.update_tuner(40.0, "VOX")
+    pm.handle_control_event(ControlEvent(106, 127, EventType.FUNCTION_PRESS))
+    assert pm._active_channel == "GTR", "Button B cycles back to GTR"
+    assert pm._tuner_channel == "GTR", "Active tuner retargets GTR"
+    assert pm._tuner_cents == 0.0, "Tuner resets after channel switch"
+    print(f"  Button B while tuning → retargets GTR, resets cents ✓")
+
+    pm.handle_control_event(ControlEvent(106, 0, EventType.FUNCTION_RELEASE))
+    assert pm._active_channel == "GTR", "Releases must be ignored"
+    print(f"  Function release ignored ✓")
+
+
 if __name__ == "__main__":
     test_volume_mapping()
     test_fx_row_layout()
@@ -298,4 +419,7 @@ if __name__ == "__main__":
     test_fx_preset()
     test_fx_disable()
     test_independent_channels()
+    test_tuner_motion()
+    test_fx_hints()
+    test_tuner_control_buttons()
     print("\n✅ ALL TESTS PASSED")

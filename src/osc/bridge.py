@@ -71,6 +71,10 @@ class OscBridge:
         elif "/master/vu" in address:
             msg["type"] = "master_vu"
             msg["level"] = float(args[0]) if args else 0.0
+        elif address.startswith("/nova/tuner"):
+            msg["type"] = "tuner"
+            msg["cents"] = float(args[0]) if args else 0.0
+            msg["channel"] = str(args[1]) if len(args) > 1 else "GTR"
 
         if self._on_message:
             self._on_message(msg)

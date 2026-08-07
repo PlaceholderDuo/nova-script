@@ -29,6 +29,14 @@ NUM_PADS = 8
 MAX_VOL = 32
 MIN_VOL = 16
 
+TUNER_SPEED_PER_CENT = 0.18
+MAX_TUNER_SPEED = 7.0
+BAND_MIN_X = 0.6
+BAND_MAX_X = 6.4
+BAND_WIDTH = 1.5
+LOCK_CENT = 3.0
+NEAR_CENT = 20.0
+
 
 class PerformanceMode(Mode):
     def __init__(self, grid, controller, config: dict | None = None, osc_bridge=None):
@@ -53,18 +61,40 @@ class PerformanceMode(Mode):
         }
 
         self._tuner_active: bool = False
+        self._active_channel: str = "GTR"
         self._tuner_phase: float = 0.0
         self._tuner_state: str = "off"
         self._tuner_state_start: float = 0.0
         self._tuner_exit_start: float = 0.0
         self._tuner_letters = ["T", "N", "R"]
+        self._tuner_cents: float = 0.0
+        self._tuner_channel: str = "GTR"
+        self._tuner_band_x: float = 3.5
+        self._tuner_band_dir: float = 1.0
+        self._tuner_band_speed: float = 0.0
+        self._hints_enabled: bool = True
+        self._hint_color: LogicalColor = LogicalColor.AMBER_HIGH
+        self._hint_text: str = ""
+        self._hint_expiry: float = 0.0
         self._bpm: float = 120.0
 
     def set_bpm(self, bpm: float):
         self._bpm = bpm
 
-    def set_hints_config(self, enabled: bool, _color: str = ""):
-        pass
+    def set_hints_config(self, enabled: bool, color: str = ""):
+        self._hints_enabled = enabled
+        if color:
+            try:
+                self._hint_color = LogicalColor[color]
+            except KeyError:
+                self._hint_color = LogicalColor.AMBER_HIGH
+
+    def _show_hint(self, text: str, color: LogicalColor | None = None, duration: float = 0.3):
+        if not self._hints_enabled:
+            return
+        self._hint_text = text
+        self._hint_color = color if color is not None else self._hint_color
+        self._hint_expiry = time.monotonic() + duration
 
     def enter(self):
         self._render()
@@ -129,8 +159,28 @@ class PerformanceMode(Mode):
         elif CHANNELS[ch]["fx_start"] <= x <= CHANNELS[ch]["fx_end"]:
             self._handle_fx_press(ch, x, y)
 
+    def set_active_channel(self, ch: str):
+        if ch in CHANNELS:
+            self._active_channel = ch
+
     def handle_control_event(self, event: ControlEvent):
-        pass
+        is_press = "PRESS" in event.event_type.name
+        if not is_press:
+            return
+
+        if event.control_id == 106:
+            self._active_channel = "VOX" if self._active_channel == "GTR" else "GTR"
+            if self._tuner_state == "active":
+                self._tuner_channel = self._active_channel
+                self._tuner_cents = 0.0
+                self._tuner_band_speed = 0.0
+                self._tuner_band_x = 3.5
+                self.mark_dirty()
+        elif event.control_id == 107:
+            if self._tuner_state in ("intro", "active"):
+                self.stop_tuner()
+            else:
+                self.start_tuner(self._active_channel)
 
     def _handle_volume_press(self, ch: str, y: int):
         vol = self._volumes[ch]
@@ -176,6 +226,7 @@ class PerformanceMode(Mode):
         if y == self._fx_disable_row(fx_idx):
             self._fx_enabled[ch][fx_idx] = not self._fx_enabled[ch][fx_idx]
             self._send_fx_bypass(ch, fx_idx)
+            self._show_fx_hint(ch, fx_idx)
             self._render()
             return
 
@@ -214,7 +265,13 @@ class PerformanceMode(Mode):
         if was_disabled:
             self._send_fx_bypass(ch, fx_idx)
         self._send_fx_preset(ch, fx_idx)
+        self._show_fx_hint(ch, fx_idx)
         self._render()
+
+    def _show_fx_hint(self, ch: str, fx_idx: int):
+        name = CHANNELS[ch]["fx_names"][fx_idx]
+        letter = name[0].upper()
+        self._show_hint(letter)
 
     def _send_vol_osc(self, ch: str):
         if not self.osc_bridge:
@@ -242,9 +299,23 @@ class PerformanceMode(Mode):
         dirty = False
         if self._tuner_active:
             self._tuner_phase = (self._tuner_phase + delta_ms * 0.01) % (math.pi * 2)
+            self._advance_tuner_band(delta_ms)
             dirty = True
         if dirty:
             self.mark_dirty()
+
+    def _advance_tuner_band(self, delta_ms: float):
+        dt = delta_ms / 1000.0
+        cents = abs(self._tuner_cents)
+        target_speed = min(MAX_TUNER_SPEED, cents * TUNER_SPEED_PER_CENT)
+        self._tuner_band_speed += (target_speed - self._tuner_band_speed) * min(1.0, dt * 4.0)
+        self._tuner_band_x += self._tuner_band_dir * self._tuner_band_speed * dt
+        if self._tuner_band_x < BAND_MIN_X:
+            self._tuner_band_x = BAND_MIN_X
+            self._tuner_band_dir = 1.0
+        elif self._tuner_band_x > BAND_MAX_X:
+            self._tuner_band_x = BAND_MAX_X
+            self._tuner_band_dir = -1.0
 
     def _render(self):
         self.clear()
@@ -263,6 +334,8 @@ class PerformanceMode(Mode):
         self._render_volume_bar("VOX")
         self._render_fx_blocks("GTR")
         self._render_fx_blocks("VOX")
+        if self._hint_text and time.monotonic() < self._hint_expiry:
+            self._render_fx_hint(self._hint_text, self._hint_color)
         self.commit()
 
     def _render_volume_bar(self, ch: str):
@@ -317,17 +390,40 @@ class PerformanceMode(Mode):
                 color = LogicalColor.RED_MED if not enabled else LogicalColor.RED_HIGH
                 self.grid.set_cell(x, dr, color)
 
+    def _render_fx_hint(self, text: str, color: LogicalColor):
+        from src.ui.modes.message import FONT_5X5
+        glyph = FONT_5X5.get(text, FONT_5X5.get("?", ["00000"] * 5))
+        for row in range(5):
+            for col in range(5):
+                if glyph[row][col] == "1":
+                    x = col + 1
+                    y = 6 - row
+                    if 0 <= x < 8 and 0 <= y < 8:
+                        self.grid.set_cell(x, y, color)
+
     def _render_tuner(self):
+        cents = abs(self._tuner_cents)
+        locked = (cents < LOCK_CENT) and (self._tuner_band_speed < 0.4)
+        band_color = LogicalColor.GREEN_HIGH if locked else (
+            LogicalColor.AMBER_HIGH if cents < NEAR_CENT else LogicalColor.RED_HIGH
+        )
+
+        lo = int(math.floor(self._tuner_band_x - BAND_WIDTH * 0.5))
+        hi = int(math.ceil(self._tuner_band_x + BAND_WIDTH * 0.5))
+
+        bg_lit = LogicalColor.GREEN_LOW
+
         for y in range(8):
             for x in range(8):
-                phase_offset = (x - 3.5) * 0.3
-                brightness = math.sin(self._tuner_phase + phase_offset)
-                if brightness > 0.7:
-                    self.grid.set_cell(x, y, LogicalColor.GREEN_HIGH)
-                elif brightness > 0.3:
-                    self.grid.set_cell(x, y, LogicalColor.GREEN_MED)
-                elif brightness > -0.3:
-                    self.grid.set_cell(x, y, LogicalColor.AMBER_LOW)
+                if lo <= x <= hi:
+                    self.grid.set_cell(x, y, band_color)
+                else:
+                    phase_offset = (x - 3.5) * 0.3
+                    brightness = math.sin(self._tuner_phase + phase_offset)
+                    if brightness > 0.7:
+                        self.grid.set_cell(x, y, bg_lit)
+                    elif brightness > 0.3:
+                        self.grid.set_cell(x, y, LogicalColor.AMBER_LOW)
 
     def _render_tuner_state(self):
         now = time.monotonic()
@@ -389,5 +485,24 @@ class PerformanceMode(Mode):
                 elif v > 0.2:
                     self.grid.set_cell(x, y, LogicalColor.AMBER_LOW)
 
-    def update_tuner(self, cents: float):
-        pass
+    def update_tuner(self, cents: float, channel: str = "GTR"):
+        self._tuner_cents = cents
+        self._tuner_channel = channel
+        if self._tuner_active:
+            self.mark_dirty()
+
+    def start_tuner(self, channel: str = "GTR"):
+        if self._tuner_state in ("intro", "active", "exit"):
+            return
+        self._tuner_channel = channel
+        self._tuner_cents = 0.0
+        self._tuner_state = "intro"
+        self._tuner_state_start = time.monotonic()
+        self.mark_dirty()
+
+    def stop_tuner(self):
+        if self._tuner_active:
+            self._tuner_active = False
+            self._tuner_state = "exit"
+            self._tuner_exit_start = time.monotonic()
+            self.mark_dirty()

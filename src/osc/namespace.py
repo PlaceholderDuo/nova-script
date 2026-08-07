@@ -32,7 +32,8 @@ INCOMING_ADDRESS = {
     "display_message":    "/nova/display/message",
     "mode_set":           "/nova/mode/set",
     "track_vu":           "/nova/track/{n}/vu",
+    "master_vu":          "/nova/master/vu",
     "beat_position":      "/nova/beat",
     "play_state":         "/nova/play_state",
-    "master_vu":          "/nova/master/vu",
+    "tuner":              "/nova/tuner",
 }

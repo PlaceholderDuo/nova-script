@@ -150,6 +150,13 @@ class Engine:
         self.midi_manager.set_on_connect(self._on_device_connect)
         self.midi_manager.set_on_disconnect(self._on_device_disconnect)
 
+        force = (
+            self.config.get("midi", {}).get("outputs", {}).get("force")
+            or self.config.get("midi", {}).get("force_output", {}).get("port_name")
+        )
+        if force:
+            self.midi_manager.register_force_output(force)
+
     def _setup_overlay(self):
         bpm = float(self.config.get("midi", {}).get("clock", {}).get("internal_bpm", 120))
         self.overlay = OverlayManager(
@@ -315,7 +322,7 @@ class Engine:
 
         if is_press and not self.overlay.is_overlay_active:
             if (self.mode_manager and self.mode_manager.active_mode_name == "arp_edit"
-                    and event.control_id == 201):
+                    and event.control_id == 200):
                 self._exit_arp_edit()
                 return
 
@@ -407,11 +414,29 @@ class Engine:
             if mode_name in self.mode_manager._modes:
                 self.mode_manager.switch_to(mode_name)
         elif msg_type == "beat":
-            pass
+            if self._clock:
+                self._clock.feed_osc_beat(msg.get("position", 0.0))
         elif msg_type == "track_vu":
-            pass
+            if self.mode_manager:
+                mixer = self.mode_manager._modes.get("mixer")
+                if mixer and hasattr(mixer, "set_track_vu"):
+                    mixer.set_track_vu(msg.get("track", 0), msg.get("level", 0.0))
+        elif msg_type == "master_vu":
+            if self.mode_manager:
+                mixer = self.mode_manager._modes.get("mixer")
+                if mixer and hasattr(mixer, "set_master_vu"):
+                    mixer.set_master_vu(msg.get("level", 0.0))
         elif msg_type == "play_state":
-            pass
+            state = msg.get("state", 0)
+            if self.mode_manager:
+                pm = self.mode_manager._modes.get("performance")
+                if pm and hasattr(pm, "set_play_state"):
+                    pm.set_play_state(state)
+        elif msg_type == "tuner":
+            if self.mode_manager:
+                pm = self.mode_manager._modes.get("performance")
+                if pm and hasattr(pm, "update_tuner"):
+                    pm.update_tuner(msg.get("cents", 0.0), msg.get("channel", "GTR"))
 
     def _tick(self):
         now = time.monotonic()
@@ -471,24 +496,28 @@ class Engine:
     def _build_virt_info(self) -> dict:
         mode = self.mode_manager.active_mode_name if self.mode_manager else ""
         page = ""
+        subpage = ""
 
         if mode == "instrument":
             m = self.mode_manager._modes.get("instrument")
             if m:
-                if getattr(m, "_arp_edit_mode", False):
-                    mode = "arp_edit"
-                    page = f"page_{getattr(m, '_arp_page', 1)}"
-                elif getattr(m, "_editing_offset", False):
+                if getattr(m, "_editing_offset", False):
                     page = "offset_select"
                 else:
                     page = "play"
+        elif mode == "arp_edit":
+            arp = self.mode_manager._modes.get("arp_edit")
+            if arp:
+                page = f"page_{getattr(arp, '_arp_page', 0) + 1}"
+                if getattr(arp, "_note_length_mode", False):
+                    subpage = "note_length"
 
         if self.overlay and self.overlay.is_overlay_active:
             if self.overlay._active == 2:
                 mode = "screensaver"
                 page = str(getattr(self.overlay, "_active_screensaver_mode", 0))
 
-        return {"mode": mode, "page": page, "subpage": ""}
+        return {"mode": mode, "page": page, "subpage": subpage}
 
     async def _virt_sync_loop(self):
         while self._running:
@@ -506,6 +535,8 @@ class Engine:
             except Exception:
                 self._virt_ws = None
             await asyncio.sleep(1)
+
+    async def _tui_broadcast_loop(self):
         while self._running:
             if self._tui_queue:
                 snapshot = self.grid.snapshot()
@@ -537,6 +568,9 @@ class Engine:
                     continue
 
                 device_name, message, timestamp = event_data[0], event_data[1], event_data[2]
+
+                if self._clock and any(b == 0xF8 for b in (message or [])):
+                    self._clock.feed_midi_clock()
 
                 controller = self.controllers.get(device_name)
                 if controller:

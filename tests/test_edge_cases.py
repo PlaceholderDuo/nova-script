@@ -103,14 +103,14 @@ def test_performance_state_conflicts():
 
     pm = PerformanceMode(grid, v.controller)
     pm.set_bpm(120)
-    pm.set_hints_config(True, "")
+    pm.set_hints_config(True, "AMBER_HIGH")
     pm.enter()
 
     # Test: rapid FX toggles (hint should refresh expiry, not overlap)
     for i in range(5):
-        pm._toggle_fx(0, i % 5)
-    assert pm._hint_letter != "", "Should have active hint"
-    print(f"  ✓ Rapid FX toggles: hint='{pm._hint_letter}', active")
+        pm._handle_fx_press("GTR", 1 + (i % 3), pm._fx_preset_row(0))
+    assert pm._hint_text != "", "Should have active hint"
+    print(f"  ✓ Rapid FX toggles: hint='{pm._hint_text}', active")
 
     # Test: hint expires after 0.3s
     time.sleep(0.35)
@@ -119,8 +119,8 @@ def test_performance_state_conflicts():
     print("  ✓ Hint expires after 0.3s")
 
     # Test: enter tuner while hint is active (tuner should override hint)
-    pm._toggle_fx(0, 0)
-    pm.handle_control_event(ControlEvent(201, 127, EventType.FUNCTION_PRESS))
+    pm._handle_fx_press("GTR", 1, pm._fx_preset_row(0))
+    pm.start_tuner("GTR")
     assert pm._tuner_state in ("intro", "active", "exit"), f"Tuner not activated: state={pm._tuner_state}"
     commit(v, grid)
     print(f"  ✓ Tuner activates over hint: state={pm._tuner_state}")
@@ -134,7 +134,7 @@ def test_performance_state_conflicts():
         if pm._tuner_state == "active":
             break
 
-    pm.handle_control_event(ControlEvent(201, 127, EventType.FUNCTION_PRESS))
+    pm.stop_tuner()
     for _ in range(15):
         time.sleep(0.05)
         pm._render()
@@ -167,22 +167,22 @@ def test_clip_launcher_stress():
         time.sleep(0.01)
         cl.handle_grid_event(GridEvent(x, y, False, 0))
 
-    tap(0, 1)
+    tap(0, 7)
     assert len(cl._playing) == 1, f"Should have 1 playing clip, got {len(cl._playing)}"
     print(f"  ✓ Launch clip → {len(cl._playing)} playing")
     time.sleep(0.1)
 
-    tap(0, 2)
+    tap(0, 6)
     assert len(cl._playing) == 1, f"Should still have 1 playing, got {len(cl._playing)}"
     print(f"  ✓ Same track new clip replaces → {len(cl._playing)} playing")
     time.sleep(0.1)
 
-    tap(0, 2)
+    tap(0, 6)
     assert len(cl._playing) == 0, f"Should have 0 playing, got {len(cl._playing)}"
     print(f"  ✓ Stop clip → {len(cl._playing)} playing")
     time.sleep(0.1)
 
-    cl.handle_control_event(ControlEvent(100, 127, EventType.FUNCTION_PRESS))
+    cl.handle_control_event(ControlEvent(107, 127, EventType.FUNCTION_PRESS))
     playing = len(cl._playing)
     assert playing > 0, f"Scene launch should activate clips, got {playing}"
     print(f"  ✓ Scene launch → {playing} clips playing")
@@ -193,16 +193,16 @@ def test_clip_launcher_stress():
             assert False, f"Track 0 should have no playing clips, got idx={idx}"
     print(f"  ✓ Track stop → playing={len(cl._playing)}")
 
-    cl.handle_grid_event(GridEvent(3, 3, True, 127))
+    cl.handle_grid_event(GridEvent(3, 4, True, 127))
     time.sleep(0.6)
-    cl.handle_grid_event(GridEvent(3, 3, False, 0))
+    cl.handle_grid_event(GridEvent(3, 4, False, 0))
     cl._render()
     print("  ✓ Long press → clear clip (no crash)")
 
     cl._playing.clear()
     for i in range(4):
         time.sleep(0.1)
-        tap(i, 2)
+        tap(i, 7)
     assert len(cl._playing) == 4, f"Rapid launches: {len(cl._playing)} (expected 4)"
     print(f"  ✓ Rapid launches (4 tracks) → {len(cl._playing)} playing")
 

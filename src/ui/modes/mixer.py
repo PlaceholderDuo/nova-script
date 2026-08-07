@@ -1,6 +1,8 @@
 """
-Mixer Mode — track volume faders + mute + reverb sends.
+Mixer Mode — track volume faders + mute + reverb sends + live VU meters.
 """
+import time
+
 from src.controllers.base import GridEvent, ControlEvent, LogicalColor
 from src.ui.mode import Mode
 
@@ -14,6 +16,24 @@ class MixerMode(Mode):
         self._muted = [False] * self._track_count
         self._reverb_send = [0] * self._track_count
         self._fader_rows = 6
+        self._vu: list[float] = [0.0] * self._track_count
+        self._master_vu: float = 0.0
+        self._vu_peak: list[float] = [0.0] * self._track_count
+        self._vu_peak_time: list[float] = [0.0] * self._track_count
+        self._vu_fall_ms: float = 300.0
+
+    def set_track_vu(self, track: int, level: float):
+        if not (0 <= track < self._track_count):
+            return
+        self._vu[track] = max(0.0, min(1.0, level))
+        if self._vu[track] >= self._vu_peak[track]:
+            self._vu_peak[track] = self._vu[track]
+            self._vu_peak_time[track] = time.monotonic()
+        self.mark_dirty()
+
+    def set_master_vu(self, level: float):
+        self._master_vu = max(0.0, min(1.0, level))
+        self.mark_dirty()
 
     def enter(self):
         self._render()
@@ -51,24 +71,41 @@ class MixerMode(Mode):
 
     def _render(self):
         self.clear()
+        now = time.monotonic()
 
         for track in range(self._track_count):
             vol = self._volumes[track]
-            filled = int(vol * self._fader_rows)
+            vu = self._vu[track]
+            filled = int(round(vol * self._fader_rows))
+            vu_rows = int(round(vu * self._fader_rows))
+
+            if self._vu_peak[track] > 0.0 and (
+                now - self._vu_peak_time[track]
+            ) * 1000 > self._vu_fall_ms:
+                if self._vu_peak[track] > 0.05:
+                    self._vu_peak[track] *= 0.5
+                else:
+                    self._vu_peak[track] = 0.0
+
+            clipped = self._vu_peak[track] >= 0.98
 
             for row in range(1, self._fader_rows + 1):
-                if row <= filled:
-                    color = LogicalColor.GREEN_MED
-                else:
-                    color = LogicalColor.OFF
-
+                color = LogicalColor.OFF
+                if row <= vu_rows:
+                    color = LogicalColor.AMBER_MED
                 if row == filled and filled > 0:
                     color = LogicalColor.GREEN_HIGH
-
+                if clipped and row == self._fader_rows:
+                    color = LogicalColor.RED_HIGH
+                elif clipped and row == vu_rows:
+                    color = LogicalColor.RED_MED
                 self.grid.set_cell(track, row, color)
 
             mute_color = LogicalColor.RED_HIGH if self._muted[track] else LogicalColor.AMBER_LOW
             self.grid.set_cell(track, self._fader_rows + 1, mute_color)
+
+            if self._master_vu >= 0.98:
+                self.grid.set_cell(track, self._fader_rows + 1, LogicalColor.RED_HIGH)
 
             rev_level = self._reverb_send[track]
             if rev_level == 0:

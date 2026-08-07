@@ -79,12 +79,12 @@ class ClipLauncherMode(Mode):
                 self._edit_press(event.x, event.y)
                 return
             x, y = event.x, event.y
-            idx = (self._num_scenes - 1 - y) * self._num_tracks + x
-            if self._clip_colors[idx] == LogicalColor.OFF:
-                return
             if y == 0:
                 self._stop_track(x)
                 self._render()
+                return
+            idx = (self._num_scenes - 1 - y) * self._num_tracks + x
+            if self._clip_colors[idx] == LogicalColor.OFF:
                 return
             self.track_press(event)
         else:
@@ -193,10 +193,7 @@ class ClipLauncherMode(Mode):
             note = clip.get("midi_note", 60)
             channel = clip.get("midi_channel", 0)
             vel = clip.get("midi_vel", 100)
-            self.midi_manager.send_message(
-                self.controller.device_name,
-                [0x90 + channel, note, vel],
-            )
+            self.midi_manager.send_force([0x90 + channel, note, vel])
         if self.osc_bridge:
             addr = clip.get("osc_addr", f"/nova/clip/{track}/{scene}")
             self.osc_bridge.send(addr, 1)
@@ -208,10 +205,7 @@ class ClipLauncherMode(Mode):
         if self.midi_manager:
             note = clip.get("midi_note", 60)
             channel = clip.get("midi_channel", 0)
-            self.midi_manager.send_message(
-                self.controller.device_name,
-                [0x90 + channel, note, 0],
-            )
+            self.midi_manager.send_force([0x80 + channel, note, 0])
         if self.osc_bridge:
             addr = clip.get("osc_addr", f"/nova/clip/{track}/{scene}")
             self.osc_bridge.send(addr, 0)
