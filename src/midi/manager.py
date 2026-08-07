@@ -49,6 +49,8 @@ class MidiManager:
         self._on_disconnect: Optional[Callable] = None
         self._midi_event_queue: asyncio.Queue = asyncio.Queue()
 
+        self.force_device: Optional[str] = None
+
     @property
     def event_queue(self) -> asyncio.Queue:
         return self._midi_event_queue
@@ -82,6 +84,16 @@ class MidiManager:
         if extra_input_patterns:
             for key, pattern in extra_input_patterns.items():
                 logger.info(f"  + extra input '{key}': pattern='{pattern}'")
+
+    def register_force_output(self, port_pattern: str):
+        """Register the Akai Force as a routable output-only device."""
+        if not port_pattern:
+            return
+        self.force_device = port_pattern
+        self.register_device(
+            port_pattern,
+            input_callback=lambda msg: None,
+        )
 
     def _find_matching_port(self, ports: list[str], pattern: str) -> Optional[MidiPort]:
         for idx, port_name in enumerate(ports):
@@ -298,6 +310,11 @@ class MidiManager:
                 conn.extra_outputs[target][1].send_message(message)
             except Exception as e:
                 logger.error(f"Error sending MIDI to {device_name}/{target}: {e}")
+
+    def send_force(self, message: list[int]):
+        """Send a MIDI message to the Akai Force output device if connected."""
+        if self.force_device and self.force_device in self.devices:
+            self.send_message(self.force_device, message, target="main")
 
     async def start(self):
         if self._running:

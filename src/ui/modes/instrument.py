@@ -390,8 +390,7 @@ class InstrumentMode(Mode):
         self._active_notes[note] = time.monotonic()
         if self.midi_manager:
             try:
-                self.midi_manager.send_message("Launchpad Mini",
-                    [0x90, note, 100], target="force")
+                self.midi_manager.send_force([0x90, note, 100])
             except Exception:
                 pass
         logger.debug(f"Note ON: {note}")
@@ -400,8 +399,7 @@ class InstrumentMode(Mode):
         self._active_notes.pop(note, None)
         if self.midi_manager:
             try:
-                self.midi_manager.send_message("Launchpad Mini",
-                    [0x80, note, 0], target="force")
+                self.midi_manager.send_force([0x80, note, 0])
             except Exception:
                 pass
         logger.debug(f"Note OFF: {note}")

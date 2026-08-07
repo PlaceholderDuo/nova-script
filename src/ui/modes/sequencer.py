@@ -94,12 +94,14 @@ class SequencerMode(Mode):
         if now - self._last_tick >= self._tick_interval:
             self._last_tick = now
 
+            prev_step = self._current_step
             self._current_step = (self._current_step + 1) % len(self._steps[0])
 
             page = self._current_step // self._visible_steps
             if page != self._page:
                 self._page = page
 
+            self._send_step_offs(prev_step)
             self._send_step_notes(self._current_step)
             self._render()
 
@@ -110,10 +112,16 @@ class SequencerMode(Mode):
         for row in range(self._num_rows):
             if self._steps[row][step]:
                 note = self._note_base + (self._num_rows - 1 - row)
-                self.midi_manager.send_message(
-                    self.controller.device_name,
-                    [0x90 + self._midi_channel, note, 100],
-                )
+                self.midi_manager.send_force([0x90 + self._midi_channel, note, 100])
+
+    def _send_step_offs(self, step: int):
+        if self.midi_manager is None:
+            return
+
+        for row in range(self._num_rows):
+            if self._steps[row][step]:
+                note = self._note_base + (self._num_rows - 1 - row)
+                self.midi_manager.send_force([0x80 + self._midi_channel, note, 0])
 
     def _render(self):
         self.clear()
