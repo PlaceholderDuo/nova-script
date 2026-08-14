@@ -122,6 +122,14 @@ class NovationController(ABC):
             for x in range(self.capabilities.grid_width):
                 self.set_grid_color(x, y, LogicalColor.OFF)
 
+    def reset_grid_state(self):
+        """Reset _grid_state to all OFF without sending MIDI.
+        Used when switching modes so the new mode's diff-based render
+        doesn't collide with leftover state from the previous mode."""
+        for y in range(self.capabilities.grid_height):
+            for x in range(self.capabilities.grid_width):
+                self._grid_state[y][x] = LogicalColor.OFF
+
     def refresh_grid(self):
         """Force all cells to re-send to hardware. Use after reconnect."""
         for y in range(self.capabilities.grid_height):

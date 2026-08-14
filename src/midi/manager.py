@@ -73,17 +73,35 @@ class MidiManager:
         input_callback: Callable,
         extra_input_patterns: Optional[dict[str, str]] = None,
         extra_output_patterns: Optional[dict[str, str]] = None,
+        input_only: bool = False,
+        output_only: bool = False,
+        input_pattern: Optional[str] = None,
+        output_pattern: Optional[str] = None,
     ):
         self.devices[name] = DeviceConnection(name=name)
         self._input_callbacks[name] = input_callback
         self._device_configs[name] = {
             "extra_inputs": extra_input_patterns or {},
             "extra_outputs": extra_output_patterns or {},
+            "input_only": input_only,
+            "output_only": output_only,
+            "input_pattern": input_pattern,
+            "output_pattern": output_pattern,
         }
         logger.info(f"Registered device: {name}")
         if extra_input_patterns:
             for key, pattern in extra_input_patterns.items():
                 logger.info(f"  + extra input '{key}': pattern='{pattern}'")
+
+    def register_input(self, name: str, input_callback: Callable, pattern: Optional[str] = None):
+        """Register an input-only device (no MIDI output opened)."""
+        self.register_device(name, input_callback, input_only=True, input_pattern=pattern)
+
+    def register_output(self, name: str, pattern: Optional[str] = None):
+        """Register an output-only device (no MIDI input opened)."""
+        if name in self.devices:
+            return
+        self.register_device(name, lambda msg: None, output_only=True, output_pattern=pattern)
 
     def register_force_output(self, port_pattern: str):
         """Register the Akai Force as a routable output-only device."""
@@ -116,20 +134,28 @@ class MidiManager:
         in_ports, out_ports = self.scan_ports()
 
         if not conn.connected:
-            input_port = self._find_matching_port(in_ports, device_name)
-            output_port = self._find_matching_port(out_ports, device_name)
+            input_only = config.get("input_only", False)
+            output_only = config.get("output_only", False)
+            in_pat = config.get("input_pattern") or device_name
+            out_pat = config.get("output_pattern") or device_name
 
-            if input_port is None or output_port is None:
+            input_port = self._find_matching_port(in_ports, in_pat) if not output_only else None
+            output_port = self._find_matching_port(out_ports, out_pat) if not input_only else None
+
+            if (not output_only and input_port is None) or (not input_only and output_port is None):
                 return False
 
             try:
-                midi_in = rtmidi.MidiIn()
-                midi_in.open_port(input_port.index)
-                midi_in.ignore_types(sysex=False, timing=False, active_sense=False)
-                midi_in.set_callback(self._make_callback(device_name, "main"))
-
-                midi_out = rtmidi.MidiOut()
-                midi_out.open_port(output_port.index)
+                midi_in = None
+                midi_out = None
+                if input_port is not None:
+                    midi_in = rtmidi.MidiIn()
+                    midi_in.open_port(input_port.index)
+                    midi_in.ignore_types(sysex=False, timing=False, active_sense=False)
+                    midi_in.set_callback(self._make_callback(device_name, "main"))
+                if output_port is not None:
+                    midi_out = rtmidi.MidiOut()
+                    midi_out.open_port(output_port.index)
 
                 conn.input_port = input_port
                 conn.output_port = output_port
@@ -138,10 +164,12 @@ class MidiManager:
                 conn.connected = True
                 conn.last_seen = time.monotonic()
 
+                in_name = input_port.name if input_port else "-"
+                out_name = output_port.name if output_port else "-"
                 logger.info(
                     f"Connected {device_name}: "
-                    f"in={input_port.name} ({input_port.index}), "
-                    f"out={output_port.name} ({output_port.index})"
+                    f"in={in_name} ({input_port.index if input_port else '-'}), "
+                    f"out={out_name} ({output_port.index if output_port else '-'})"
                 )
             except Exception as e:
                 logger.error(f"Failed to connect {device_name}: {e}")
@@ -245,15 +273,15 @@ class MidiManager:
         for device_name, conn in self.devices.items():
             if not conn.connected:
                 continue
-            if conn.input_port is None or conn.output_port is None:
+            if conn.input_port is None and conn.output_port is None:
                 continue
 
-            in_still = any(
-                conn.input_port.name == p for p in in_ports
-            )
-            out_still = any(
-                conn.output_port.name == p for p in out_ports
-            )
+            in_still = True
+            out_still = True
+            if conn.input_port is not None:
+                in_still = any(conn.input_port.name == p for p in in_ports)
+            if conn.output_port is not None:
+                out_still = any(conn.output_port.name == p for p in out_ports)
 
             if not in_still or not out_still:
                 logger.warning(

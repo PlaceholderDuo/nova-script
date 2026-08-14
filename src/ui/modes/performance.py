@@ -77,6 +77,10 @@ class PerformanceMode(Mode):
         self._hint_text: str = ""
         self._hint_expiry: float = 0.0
         self._bpm: float = 120.0
+        self._preset_actions: dict[str, list[str]] = {}
+
+        cfg = config or {}
+        self._preset_actions = cfg.get("preset_actions") or {}
 
     def set_bpm(self, bpm: float):
         self._bpm = bpm
@@ -288,6 +292,12 @@ class PerformanceMode(Mode):
         preset = self._fx_presets[ch][fx_idx]
         self.osc_bridge.send(f"/track/{track}/fx/{fx_idx + 1}/preset", preset)
 
+        # Optional: send a named Reaper action when a preset is selected
+        key = f"{ch}_{fx_idx}"
+        actions = self._preset_actions.get(key, [])
+        if preset <= len(actions):
+            self.osc_bridge.send_action_str(actions[preset - 1])
+
     def _send_fx_bypass(self, ch: str, fx_idx: int):
         if not self.osc_bridge:
             return
@@ -296,13 +306,27 @@ class PerformanceMode(Mode):
         self.osc_bridge.send(f"/track/{track}/fx/{fx_idx + 1}/bypass", 0 if enabled else 1)
 
     def tick(self, delta_ms: float):
-        dirty = False
-        if self._tuner_active:
-            self._tuner_phase = (self._tuner_phase + delta_ms * 0.01) % (math.pi * 2)
-            self._advance_tuner_band(delta_ms)
-            dirty = True
-        if dirty:
-            self.mark_dirty()
+        # The tuner is a time-driven state machine (intro → active → exit):
+        # it needs to re-render every tick while it's running, otherwise the
+        # letters never advance, the needle never sweeps and the exit fade
+        # never completes. Everything outside the tuner uses the standard
+        # dirty-render contract from Mode.tick.
+        if self._tuner_state != "off":
+            if self._tuner_active:
+                self._tuner_phase = (self._tuner_phase + delta_ms * 0.01) % (math.pi * 2)
+                self._advance_tuner_band(delta_ms)
+            self._render()
+            return
+
+        # FX hints are drawn for ~0.3s and must be painted OVER once they
+        # expire, or a ghost letter stays on the grid until the next render.
+        hint_just_expired = bool(self._hint_text) and time.monotonic() >= self._hint_expiry
+        if hint_just_expired:
+            self._hint_text = ""
+
+        if self._needs_render or hint_just_expired:
+            self._needs_render = False
+            self._render()
 
     def _advance_tuner_band(self, delta_ms: float):
         dt = delta_ms / 1000.0

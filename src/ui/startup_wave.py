@@ -10,10 +10,11 @@ from src.layout.grid import LogicalGrid
 
 logger = logging.getLogger(__name__)
 
-PASS_DURATION = 0.75
-TOTAL_PASSES = 6
+PASS_DURATION = 0.4
+TOTAL_PASSES = 3
 TRAIL_LENGTH = 4
 FRAME_MS = 0.03
+SLEEP_MS = 0.0
 
 
 class StartupWave:
@@ -48,8 +49,7 @@ class StartupWave:
 
         lead = int(pass_elapsed / 0.015)
 
-        self.grid.clear()
-
+        colors = []
         for band in range(max(0, lead - TRAIL_LENGTH), lead + 1):
             dist = lead - band
             if dist <= 1:
@@ -62,15 +62,18 @@ class StartupWave:
                 color = LogicalColor.RED_LOW
 
             if forward:
-                total = band
+                total_pos = band
             else:
-                total = 14 - band
+                total_pos = 14 - band
 
-            for x in range(max(0, total - 7), min(7, total) + 1):
-                y = total - x
+            for x in range(max(0, total_pos - 7), min(7, total_pos) + 1):
+                y = total_pos - x
                 if 0 <= x < 8 and 0 <= y < 8:
-                    self.grid.set_cell(x, y, color)
+                    colors.append((x, y, color))
 
+        self.grid.clear()
+        for x, y, color in colors:
+            self.grid.set_cell(x, y, color)
         self._commit()
         return True
 

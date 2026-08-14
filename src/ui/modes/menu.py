@@ -19,6 +19,7 @@ class MenuMode(Mode):
         self._items = items
 
     def enter(self):
+        self._needs_render = False
         self._render()
 
     def exit(self):

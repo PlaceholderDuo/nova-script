@@ -54,11 +54,22 @@ class ClipLauncherMode(Mode):
         self._init_default_colors()
 
     def _init_default_colors(self):
-        for idx in range(64):
-            scene = idx // 8
-            color_idx = (scene % 3) + 1
-            if scene < 4:
-                self._clip_colors[idx] = MK1_COLOR_CYCLE[color_idx]
+        # 4 even quadrants (top/bottom × left/right):
+        #   Amber  top-left, Green top-right,
+        #   Red 80% (MED) bottom-right, OFF bottom-left.
+        for scene in range(self._num_scenes):
+            for track in range(self._num_tracks):
+                idx = scene * 8 + track
+                top = scene < 4
+                left = track < 4
+                if top and left:
+                    self._clip_colors[idx] = LogicalColor.AMBER_HIGH
+                elif top and not left:
+                    self._clip_colors[idx] = LogicalColor.GREEN_HIGH
+                elif not top and not left:
+                    self._clip_colors[idx] = LogicalColor.RED_MED
+                else:
+                    self._clip_colors[idx] = LogicalColor.OFF
 
     def set_bpm(self, bpm: float):
         self._bpm = bpm

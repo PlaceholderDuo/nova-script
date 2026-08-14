@@ -76,9 +76,9 @@ class SettingsScreen(ModalScreen):
         }
         #settings-dialog {
             width: 58;
-            height: 32;
-            border: thick $primary;
-            background: $surface;
+            height: 34;
+            border: thick \$primary;
+            background: \$surface;
             padding: 1 2;
         }
         .setting-row {
@@ -132,6 +132,8 @@ class SettingsScreen(ModalScreen):
         ]
         downbeat_color_opts = [(c, c) for c in ["GREEN_HIGH", "RED_HIGH", "AMBER_HIGH", "GREEN_MED", "RED_MED", "AMBER_MED"]]
         hints_options = [("ON", True), ("OFF", False)]
+        ss_enabled = self._config.get("screensaver", {}).get("enabled", True)
+        ss_options = [("ON", True), ("OFF", False)]
 
         with Container(id="settings-dialog"):
             yield Static("⚙ Settings — nova-script")
@@ -157,6 +159,9 @@ class SettingsScreen(ModalScreen):
             with Horizontal(classes="setting-row"):
                 yield Static("Visual hints:", classes="setting-label")
                 yield Select(hints_options, prompt="ON" if hints_on else "OFF", value=hints_on, id="hints-select")
+            with Horizontal(classes="setting-row"):
+                yield Static("Screensaver:", classes="setting-label")
+                yield Select(ss_options, prompt="ON" if ss_enabled else "OFF", value=ss_enabled, id="screensaver-select")
             yield Static("")
             yield Static("— ARP —")
             arp_transpose = self._config.get("arp", {}).get("diatonic", True)
@@ -195,6 +200,9 @@ class SettingsScreen(ModalScreen):
             if dc: ui["downbeat_color"] = str(dc)
             h = self.query_one("#hints-select", Select).value
             if h is not None: ui["hints_enabled"] = bool(h) if str(h) != "False" else False
+            ss = self.query_one("#screensaver-select", Select).value
+            rc = self._config.setdefault("screensaver", {})
+            if ss is not None: rc["enabled"] = bool(ss) if str(ss) != "False" else False
             osc = self._config.setdefault("osc", {})
             ss = self.query_one("#osc-scroll-speed", Input).value
             try:

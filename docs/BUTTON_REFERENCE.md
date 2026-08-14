@@ -280,12 +280,62 @@ Hold A → A button flashes → top row pads 1-5 show offset options (ORANGE exc
 
 ---
 
+## Light Show Mode (Top-7 shortcut — LITE)
+
+Live lighting cue controller. Pick a *mood* (a library of scenes) from the
+right column, then cue scenes from the grid. Writes `FORCE_LOOK` JSON-lines to
+`/tmp/lighting_feed`, consumed by the lighting engine
+(`lighting-system/engine/showfeed.py` → QLC+/Govee).
+
+### Right Column (A-E = mood selectors)
+| Button | Mood | Selector LED |
+|--------|------|--------------|
+| A | Standard | AMBER (GREEN_HIGH when active) |
+| B | Acoustic Candlelight | GREEN (GREEN_HIGH when active) |
+| C | EDM | BLUE (GREEN_HIGH when active) |
+| D | High Energy | RED (GREEN_HIGH when active) |
+| E | Ballad | YELLOW (GREEN_HIGH when active) |
+| F-H | — | OFF |
+
+- Press a mood button to switch to that mood's 8-scene page.
+
+### Grid (8×8) — 2 rows × 4 cols of scene pads
+| Color | Meaning |
+|-------|---------|
+| AMBER_MED | Available **snap** scene (fade & hold) |
+| RED_HIGH | **pulse** scene (flash, beat-quantized, auto-return) |
+| GREEN_HIGH | Currently-active scene |
+
+- **snap** scene: tap to fade to that look and hold (uses the scene's `fade_ms`).
+- **pulse** scene: tap to arm a flash; it fires on the next clock beat and
+  runs for `pulse_beats`, then auto-returns to the previous scene (or to auto
+  if there was none).
+
+### Behavior
+- Works **standalone** — with no song loaded the look applies immediately
+  (the lighting driver no longer waits for a beat to apply a `FORCE_LOOK`).
+- Crossfades: the lighting engine interpolates between looks over `fade_ms`
+  instead of snapping.
+- Exiting the mode releases manual control (`look: null`): during a song the
+  auto-engine resumes; with no song the rig fades to black.
+- Beat + BPM come from the configured clock source (Akai Force MIDI clock >
+  REAPER OSC > internal).
+
+### Feed format
+```
+{"event": "FORCE_LOOK", "look": "<Look Name>", "fade_ms": <ms>, "scene": "<name>"}
+{"event": "FORCE_LOOK", "look": "<Look Name>", "fade_ms": <ms>, "scene": "<name>", "pulse": true}
+{"event": "FORCE_LOOK", "look": null}
+```
+
+---
+
 ## Menu Mode
 
 ### Grid
-- 2×2 colored blocks representing mode shortcuts (PERF, CLIP, SEQ, MIX).
+- 2×2 colored blocks representing mode shortcuts (PERF, CLIP, SEQ, MIX, INST, ARP, LITE).
 - Press block: Switch to that mode.
-- Top-row buttons also act as mode shortcuts (1=Performance, 2=Clip, 3=Seq, 4=Mix, 5=Instrument).
+- Top-row buttons also act as mode shortcuts (2=Clip, 3=Seq, 4=Mix, 5=Inst, 6=ARP, 7=Lite).
 
 ---
 
@@ -312,15 +362,20 @@ Hold A → A button flashes → top row pads 1-5 show offset options (ORANGE exc
 
 ## Universal Controls (All Modes)
 
-### Top Row (Always Available as Mode Shortcuts)
+### Top Row (Always Available as Mode Shortcuts — config-driven, `modes.menu.items`)
 | Button | Mode |
 |--------|------|
-| 1 | Performance (Home) |
-| 2 | Clip Launcher |
-| 3 | Sequencer |
-| 4 | Mixer |
-| 5 | Instrument |
-| 6-8 | Unused |
+| 1 | Home (combo "home" → Menu) |
+| 2 | Menu item 2 (live-show: Clip Launcher) |
+| 3 | Menu item 3 (live-show: Sequencer) |
+| 4 | Menu item 4 (live-show: Mixer) |
+| 5 | Menu item 5 (live-show: Instrument) |
+| 6 | Menu item 6 (live-show: ARP Edit) |
+| 7 | Menu item 7 (live-show: Light Show) |
+| 8 | Menu item 8 (if configured) |
+
+Shortcuts read the menu's `_items` list (control N → items[N-200]), so they
+follow whatever the active profile configures.
 
 ### Combos (Global)
 | Combo | Action |

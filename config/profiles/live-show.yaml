@@ -5,9 +5,17 @@ midi:
   outputs:
     force: "Akai Force"
   clock:
-    preferred: "Reaper (OSC)"
+    preferred: "Akai Force (MIDI Clock)"
     fallback: "Internal"
     internal_bpm: 120
+  # Alesis V25 — separate non-Novation input device. Its MIDI is forwarded
+  # out through the M-Track Plus MIDI OUT jack → MIDI cable → Akai Force IN.
+  # 25 keys, 4 knobs (CC20-23), mod wheel (CC1), pitch wheel, 4 buttons, 8 pads.
+  v25:
+    target: "M-Track Plus"
+    input_pattern: "V25"
+    cc_remap:
+      1: 16    # mod wheel (CC1) -> General Purpose 1 (CC16), MIDI-learn on Force
 
 osc:
   listen_port: 9001
@@ -17,7 +25,7 @@ osc:
 
 ui:
   default_mode: performance
-  idle_timeout_ms: 8000
+  idle_timeout_ms: 30000
   long_press_ms: 500
   message_scroll_speed_ms: 150
   downbeat_flash: "tempo_led"
@@ -31,11 +39,73 @@ modes:
       - {label: "CLIP", mode: "clip_launcher", color: "RED_MED", x: 2, y: 6, w: 2, h: 2}
       - {label: "SEQ", mode: "sequencer", color: "AMBER_HIGH", x: 4, y: 6, w: 2, h: 2}
       - {label: "MIX", mode: "mixer", color: "GREEN_HIGH", x: 0, y: 4, w: 2, h: 2}
+      - {label: "INST", mode: "instrument", color: "GREEN_MED", x: 2, y: 4, w: 2, h: 2}
+      - {label: "ARP", mode: "arp_edit", color: "AMBER_MED", x: 4, y: 4, w: 2, h: 2}
+      - {label: "LITE", mode: "light_show", color: "BLUE_HIGH", x: 6, y: 6, w: 2, h: 2}
 
   sequencer:
     rows: 7
     default_resolution: 16
     midi_channel: 0
+
+  light_show:
+    feed: /tmp/lighting_feed
+    # Moods: right-column A-E select mood; grid = 8 scenes per mood.
+    # look = existing engine look (placeholder until the look library revamp).
+    # cue: snap (hold) or pulse (burst, auto-return after pulse_beats).
+    # fade_ms: crossfade target (the engine currently honors this for
+    #   look changes once fade support lands; snap is immediate today).
+    moods:
+      - name: "Standard"
+        scenes:
+          - {name: "Wash",       look: "Warm Ambient",      cue: snap,  fade_ms: 800}
+          - {name: "Full",       look: "Standard Performance", cue: snap, fade_ms: 800}
+          - {name: "Low Key",    look: "Neutral",           cue: snap,  fade_ms: 800}
+          - {name: "Wide",       look: "Country Rock Wide", cue: snap,  fade_ms: 800}
+          - {name: "Solo",       look: "Solo",              cue: snap,  fade_ms: 800}
+          - {name: "Blackout",   look: "Blackout",          cue: snap,  fade_ms: 600}
+          - {name: "Flash",      look: "Grand Finale Sparkle", cue: pulse, fade_ms: 150, pulse_beats: 1}
+          - {name: "Pulse",      look: "High Energy",       cue: pulse, fade_ms: 150, pulse_beats: 2}
+      - name: "Acoustic Candlelight"
+        scenes:
+          - {name: "Candle",     look: "Acoustic Hush",     cue: snap,  fade_ms: 1500}
+          - {name: "Glow",       look: "Intimate",          cue: snap,  fade_ms: 1500}
+          - {name: "Amber",      look: "Warm Ambient",      cue: snap,  fade_ms: 1200}
+          - {name: "Rose",       look: "Neutral",           cue: snap,  fade_ms: 1200}
+          - {name: "Dim",        look: "Neutral",           cue: snap,  fade_ms: 1500}
+          - {name: "Out",        look: "Blackout",          cue: snap,  fade_ms: 2000}
+          - {name: "Breathe",    look: "Warm Ambient",      cue: pulse, fade_ms: 400,  pulse_beats: 4}
+          - {name: "Swell",      look: "Acoustic Hush",     cue: pulse, fade_ms: 400,  pulse_beats: 4}
+      - name: "EDM"
+        scenes:
+          - {name: "Deep",       look: "Dark",              cue: snap,  fade_ms: 500}
+          - {name: "Drop",       look: "High Energy",       cue: snap,  fade_ms: 300}
+          - {name: "Build",      look: "Sparkle Buildup",   cue: snap,  fade_ms: 500}
+          - {name: "Strobe",     look: "Drum Heavy",        cue: pulse, fade_ms: 100,  pulse_beats: 2}
+          - {name: "Blinder",    look: "Crowd Blinder",     cue: pulse, fade_ms: 100,  pulse_beats: 1}
+          - {name: "Wash",       look: "Crowd",             cue: snap,  fade_ms: 500}
+          - {name: "Break",      look: "Breakdown",         cue: snap,  fade_ms: 600}
+          - {name: "Finale",     look: "Grand Finale Sparkle", cue: pulse, fade_ms: 150, pulse_beats: 4}
+      - name: "High Energy"
+        scenes:
+          - {name: "Full",       look: "High Energy",       cue: snap,  fade_ms: 400}
+          - {name: "Power",      look: "Power Chorus",      cue: snap,  fade_ms: 400}
+          - {name: "Big",        look: "Big Moment",        cue: snap,  fade_ms: 400}
+          - {name: "Drum",       look: "Drum Heavy",        cue: pulse, fade_ms: 150,  pulse_beats: 2}
+          - {name: "Flash",      look: "Grand Finale Sparkle", cue: pulse, fade_ms: 100, pulse_beats: 1}
+          - {name: "Crowd",      look: "Crowd",             cue: snap,  fade_ms: 400}
+          - {name: "Red",        look: "Red Moment",        cue: snap,  fade_ms: 500}
+          - {name: "Blackout",   look: "Blackout",          cue: snap,  fade_ms: 300}
+      - name: "Ballad"
+        scenes:
+          - {name: "Intimate",   look: "Intimate",          cue: snap,  fade_ms: 2000}
+          - {name: "Rose",       look: "Acoustic Hush",     cue: snap,  fade_ms: 2000}
+          - {name: "Swell",      look: "Swell & Release",   cue: snap,  fade_ms: 1500}
+          - {name: "Climb",      look: "Sparkle Buildup",   cue: snap,  fade_ms: 1200}
+          - {name: "Peak",       look: "Grand Finale Sparkle", cue: pulse, fade_ms: 300, pulse_beats: 2}
+          - {name: "Out",        look: "Blackout",          cue: snap,  fade_ms: 2500}
+          - {name: "Breath",     look: "Warm Ambient",      cue: pulse, fade_ms: 500,  pulse_beats: 4}
+          - {name: "Moon",       look: "Neutral",           cue: snap,  fade_ms: 2000}
 
   mixer:
     tracks_per_bank: 8
@@ -61,11 +131,18 @@ mixer:
     - {index: 15, alias: "Force Pad 4", output: "MIDI", curve: "linear", midi_channel: 0, midi_cc: 28}
 
 screensaver:
+  enabled: false
   cycle_enabled: true
   firework_bars: 8
-  idle_timeout_ms: 10000
+  idle_timeout_ms: 30000
   brightness: 100
 
 tui:
   enabled: true
   grid_refresh_ms: 50
+
+# ── Reaper OSC (the easy way: use ReaLearn) ─────────────────────────
+# 1. Install ReaLearn via ReaPack
+# 2. ReaLearn → Settings → OSC listen port: 8000
+# 3. Press Launchpad pads → "Learn source" in ReaLearn → map to anything
+# See docs/REAPER_OSC_SETUP.md for the full guide.

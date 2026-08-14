@@ -712,75 +712,90 @@ function updateInfoPanel() {
 
   const HELP = {
     'performance': {
-      title: 'Performance Mode',
+      title: 'Performance Mode — GTR/VOX Dual-Channel FX',
       right: [
-        ['A', 'Page indicator (current)'],
-        ['B', 'Page indicator (page 2)'],
-        ['C-H', 'Unused'],
+        ['A', 'Strobe tuner (toggle for active ch)'],
+        ['B', 'Active channel (GTR ↔ VOX)'],
       ],
-      grid: 'Row 7: Track mutes (GREEN=active, AMBER=track, RED=muted). Rows 1-6: FX state. Top row 1-8: toggle track mutes. Right 1-5: FX toggles. Tuner: Button A toggles strobe tuner; motion-band (RED way-off / AMBER hunting / GREEN locked) driven by /nova/tuner cents. FX taps flash a letter hint (D/H/A/T).'
+      grid: 'Col 0+4: Volume bars (8 pads, dual-level press). Col 1-3: GTR FX (Delay/Harmony/Amp/Tr). Col 5-7: VOX FX (Delay/Harmony/Drv/SFX). Each FX has 3 preset pads × 2 banks. Press preset=select, long-press same pad=toggle bank. Row below FX: red disable bar. Vol pad 0 double-press=mute. A=tuner, B=channel.'
     },
     'instrument': {
-      title: 'Instrument Mode',
+      title: 'Instrument Mode — 8×8 Scale Grid',
       right: [
-        ['A', 'Notes / Chords'],
-        ['B', 'Scale (Major → Blues → Chromatic)'],
-        ['C', 'Hold (toggle)'],
-        ['D', 'ARP (OFF → Up → Down)'],
-        ['E', 'ARP Pattern (1 → 2 → 3)'],
-        ['F-H', 'Unused'],
+        ['A', 'Notes / Chords toggle'],
+        ['B', 'Scale (Major → Blues → Chrom)'],
+        ['C', 'Hold (toggle latch)'],
+        ['D', 'ARP (press = enable/disable)'],
+        ['E', 'ARP Pattern → long-press=editor'],
+        ['F', 'Root key (C→C#→...→B)'],
+        ['H', 'Stop'],
       ],
-      grid: '8×8 scale-mapped instrument. RED=root notes, GREEN=pressed, AMBER=scale notes. Hold A for row offset overlay.'
+      grid: '8×8 scale-mapped instrument. RED_HIGH=root notes, GREEN_HIGH=pressed pad, GREEN_MED=octave alt, AMBER_LOW=background. ARP is BPM-synced.'
     },
     'arp_edit': {
-      title: 'ARP Edit Mode',
+      title: 'ARP Pattern Editor',
       right: [
-        ['A', 'Pattern slot (press=load, hold=save)'],
-        ['B', 'Pattern slot (press=load, hold=save)'],
-        ['C', 'Pattern slot (press=load, hold=save)'],
-        ['D', 'Pattern slot (press=load, hold=save)'],
-        ['E', 'Note-length mode (LENGTH entry anim)'],
-        ['F', 'Pattern slot (press=load, hold=save)'],
-        ['H', 'Page down (wrap)'],
-        ['G', 'Page up (wrap)'],
+        ['A-D', 'Presets 1-4 (1-3 factory, read-only)'],
+        ['E', 'Preset 5 (user, short=load long=save)'],
+        ['F', 'Note-length mode (RED indicator)'],
+        ['G', 'Page down'],
+        ['H', 'Page up'],
       ],
-      grid: 'Row 0: Beat chase (AMBER). Rows 1-7: Scale degrees. Press pad=set note, press lit=clear. ARP preview plays with note-lengths: 1-4 short, 5 full step, 6-7 overlap (legato), 8 = legato hold.',
+      grid: 'Row 0: Beat chase (AMBER). Rows 1-7: Scale degrees. Press pad=set note, press lit=clear. 8 presets per page × 3 pages. Top-1 (green) = back to pattern editor, then again exits.'
     },
     'arp_edit_note_length': {
-      title: 'ARP Edit — Note Length',
+      title: 'ARP Edit — Note Lengths',
       right: [
-        ['A-H', 'Set ALL 8 steps to length A=1 … H=8'],
-        ['E', 'Exit note-length (back to pattern)'],
+        ['A-H', 'Set ALL 8 steps to length A=1 … H=8 (F = current mode)'],
+        ['Top-1', 'Green = back to pattern editor'],
       ],
-      grid: 'BAR-GRAPH: each column = an ARP step, bar height = note length (1-8). Press pad (x,y) sets step x to length y+1. RED bars.',
+      grid: 'BAR-GRAPH: each column = an ARP step, bar height = note length (1-8). Press pad sets length. RED bars. Lengths 1-4=staccato, 5=full step, 6-7=overlap, 8=legato hold.'
     },
     'clip_launcher': {
-      title: 'Clip Launcher',
-      right: [['A-B', 'Page indicators']],
-      grid: '8 tracks × 7 clips. Press slot=launch, press playing=stop. AMBER=empty, GREEN=playing, RED=stopped.'
+      title: 'Clip Launcher — 4 Quadrants',
+      right: [
+        ['A-H', 'Launch scenes 0-7'],
+      ],
+      grid: '8 tracks × 8 scenes in 4 quadrants. Top-left AMBER, top-right GREEN_HIGH, bottom-right RED_MED, bottom-left empty (OFF). Press clip=launch (GREEN_HIGH), press again=stop. Long-press=clear. Bottom row = track stop.'
     },
     'sequencer': {
-      title: 'Sequencer',
-      right: [['A-B', 'Page indicators']],
-      grid: '7 rows × 16 steps. Press pad=toggle step. Row 7=transport controls.'
+      title: 'Step Sequencer — 7 Rows × 32 Steps',
+      right: [
+        ['A', 'Resolution ÷ 2'],
+        ['B', 'Resolution × 2'],
+      ],
+      grid: 'Rows 0-6: note rows (RED/AMBER/GREEN groups). Column 7: transport (GREEN=playing, RED=stopped). Every 4th step: RED_LOW marker. Top-2=play/pause, Top-3=reset, Top-7/8=page L/R.'
+    },
+    'light_show': {
+      title: 'Light Show — Live Cue Lighting',
+      right: [
+        ['A', 'Standard mood'],
+        ['B', 'Acoustic Candlelight mood'],
+        ['C', 'EDM mood'],
+        ['D', 'High Energy mood'],
+        ['E', 'Ballad mood'],
+      ],
+      grid: '2×4 scene pads per mood. AMBER_MED=snap scene (fade & hold), RED_HIGH=pulse scene (beat flash + auto-return), GREEN_HIGH=active. Press pad=cue → FORCE_LOOK to /tmp/lighting_feed. Works standalone (applies immediately, crossfades over fade_ms).'
     },
     'mixer': {
-      title: 'Mixer',
-      grid: '8 tracks × faders + live VU. Rows 1-6: faders (GREEN=set level, AMBER=live signal, RED flash=peak/clip). Row 0=reverb send, Row 7=mute. Master clip flashes bottom row red.'
+      title: 'Mixer — 8-Track VU + Faders',
+      right: [
+      ],
+      grid: '8 columns = tracks. Rows 0-6: volume faders (GREEN=set level, AMBER=live signal, RED flash=peak/clip). Row 7: Mute/solo toggles. Row 0: Reverb send (OFF→AMBER_MED→GREEN_HIGH 3-way cycle).'
     },
     'menu': {
-      title: 'Menu',
-      grid: '2×2 colored blocks: PERF/CLIP/SEQ/MIX. Press block=switch mode. Top row 1-5 also mode shortcuts.'
+      title: 'Menu — Mode Selection',
+      grid: 'Bottom 2 rows: 7 mode blocks (2×2 each). PERF=RED_HIGH / CLIP=RED_MED / SEQ=AMBER_HIGH / MIX=GREEN_HIGH / INST=GREEN_MED / ARP=AMBER_MED / LITE=BLUE_HIGH. Press block=switch mode. Top-row buttons 2-8 = same shortcuts.'
     },
     'screensaver': {
-      title: 'Screensaver',
+      title: 'Screensaver — 3 Visual Modes',
       right: [
-        ['A', 'Heart'],
-        ['B', 'Waves'],
-        ['C', 'Glimmer'],
-        ['D-H', 'Reserved'],
+        ['A', 'Heart (red heart on 8×8)'],
+        ['B', 'Waves (diagonal amber gradient)'],
+        ['C', 'Glimmer (random red/amber sparkle)'],
+        ['D-H', 'Dismiss screensaver → passthrough to mode'],
       ],
-      grid: 'Press any grid pad or top row button to dismiss. First press consumed, second acts.'
+      grid: 'Auto-activates after 10s idle. Manual: Top-1+2. Press ANY button (grid/top-row/A-H) to dismiss + passthrough. Right column A-C switch mode instantly.'
     },
   };
 
@@ -810,7 +825,7 @@ function updateInfoPanel() {
 
   html += '<h4>Grid</h4><p>' + (info.grid || '') + '</p>';
   html += '<hr><h4>Top row shortcuts</h4>';
-  html += '<p>1=Performance  2=Clip  3=Seq  4=Mix  5=Instrument</p>';
+  html += '<p>1=HOME(menu)  2=Clip  3=Seq  4=Mix  5=Inst  6=ARP  7=Lite (config-driven)</p>';
 
   if (state.connected) {
     html += '<p style="color:#0a2">MIDI active</p>';

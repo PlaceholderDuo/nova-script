@@ -63,7 +63,7 @@ class OscBridge:
             msg["type"] = "track_vu"
             parts = address.split("/")
             try:
-                track_idx = int(parts[2]) if parts[2] != "*" else 0
+                track_idx = int(parts[3]) if parts[3] != "*" else 0
                 msg["track"] = track_idx
                 msg["level"] = float(args[0]) if args else 0.0
             except (ValueError, IndexError):
@@ -121,6 +121,11 @@ class OscBridge:
 
     def send_action(self, action_id: int):
         self.send("/action", action_id)
+
+    def send_action_str(self, action_name: str):
+        """Trigger a Reaper action by string command ID (e.g. '_S&M_LOAD_...').
+        ReaLearn also uses these as mapping targets."""
+        self.send("/action/str", action_name)
 
     def send_tempo(self, bpm: float):
         self.send("/tempo", bpm)

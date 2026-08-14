@@ -100,6 +100,7 @@ class OverlayManager:
         self.image_store = image_store
         self.idle_timeout_ms = idle_timeout_ms
         self.bpm = bpm
+        self._screensaver_enabled: bool = True
 
         self._active: OverlayPriority = OverlayPriority.ACTIVE_MODE
         self._previous: OverlayPriority = OverlayPriority.ACTIVE_MODE
@@ -197,7 +198,7 @@ class OverlayManager:
         if self._active == OverlayPriority.ACTIVE_MODE:
             return False
 
-        # Screensaver: right column buttons switch mode
+        # Screensaver: right column buttons A-C switch mode, D-H passthrough
         if self._active == OverlayPriority.SCREENSAVER and 100 <= event.control_id < 108:
             idx = event.control_id - 100
             if 0 <= idx < len(self._screensaver_modes):
@@ -205,8 +206,12 @@ class OverlayManager:
                 self._sparkles.clear()
                 self._render_screensaver()
                 return True
+            self._enter_overlay(OverlayPriority.ACTIVE_MODE)
+            self._dismissed = False
+            return False
 
-        # Normal dismiss behaviour for all other controls
+        # 2-press dismiss for all other top-row/grid buttons:
+        # first press = dismiss (absorbed), second press = passthrough
         if not self._dismissed:
             self._dismiss_overlay()
             self._dismissed = True
@@ -236,6 +241,8 @@ class OverlayManager:
         self._previous = self._active
         self._dismissed = False
         self._active = priority
+        if priority == OverlayPriority.ACTIVE_MODE:
+            self._idle_since = time.monotonic()
         name = OVERLAY_NAMES.get(priority, "unknown")
         prev = OVERLAY_NAMES.get(self._previous, "?")
         logger.info(f"Overlay: {prev} → {name}")
@@ -244,7 +251,12 @@ class OverlayManager:
         name = OVERLAY_NAMES.get(self._active, "?")
         logger.info(f"Overlay dismissed: {name}")
 
+    def set_screensaver_enabled(self, enabled: bool):
+        self._screensaver_enabled = enabled
+
     def _check_idle(self, now: float):
+        if not self._screensaver_enabled:
+            return
         if self._active != OverlayPriority.ACTIVE_MODE:
             return
         idle_ms = (now - self._idle_since) * 1000

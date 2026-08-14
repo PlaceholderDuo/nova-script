@@ -33,7 +33,9 @@ class ModeManager:
 
         self._active_mode_name = mode_name
         self._active_mode = self._modes[mode_name]
+        self.controller.clear_grid()
         logger.info(f"Switched to mode: {mode_name}")
+        self._active_mode._needs_render = False
         self._active_mode.enter()
 
     def switch_back(self):

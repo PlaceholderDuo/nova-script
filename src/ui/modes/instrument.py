@@ -93,6 +93,11 @@ class InstrumentMode(Mode):
         self._arp_timer: float = 0.0
         self._arp_interval: float = 0.125
         self._active_notes: dict[int, float] = {}
+        # Notes currently HELD on the pads — the arp's "gate". Kept separate
+        # from _active_notes (the note currently SOUNDING), so the arp can
+        # keep cycling the pattern around the chord you're holding instead of
+        # walking up from whatever note it happened to play last.
+        self._gate_notes: dict[int, float] = {}
         self._pressed_pads: set[tuple[int, int]] = set()
         self._last_arp_progress: float = 0.0
         self._arp_transpose_diatonic: bool = True
@@ -212,13 +217,16 @@ class InstrumentMode(Mode):
 
         if not is_press:
             if cid == 100 + self.CTRL_ARP_PAT:
-                if self._e_long_pending and self._arp_edit_callback:
+                # E is dual-purpose: a LONG press opens the pattern editor,
+                # a SHORT press cycles the active ARP pattern.
+                if self._e_long_pending:
+                    self._e_long_pending = False
                     press_ms = (time.monotonic() - self._e_press_time) * 1000
-                    if press_ms >= self._long_press_ms:
-                        self._e_long_pending = False
+                    if self._arp_edit_callback and press_ms >= self._long_press_ms:
                         self._arp_edit_callback()
                         return
-                self._e_long_pending = False
+                    self._cycle_arp_pattern()
+                return
             if cid == 100 + self.CTRL_NOTES:
                 self._a_held = False
                 self._editing_offset = False
@@ -239,8 +247,6 @@ class InstrumentMode(Mode):
             elif idx == self.CTRL_ARP_PAT:
                 self._e_press_time = time.monotonic()
                 self._e_long_pending = True
-                if not self._arp_edit_callback:
-                    self._cycle_arp_pattern()
             elif idx == self.CTRL_KEY:
                 self._cycle_key()
 
@@ -328,18 +334,19 @@ class InstrumentMode(Mode):
         self._render_controls()
 
     def _cycle_arp(self):
-        modes = [self.ARP_OFF, self.ARP_UP, self.ARP_DOWN]
-        current = modes.index(self._arp_mode)
-        next_mode = modes[(current + 1) % len(modes)]
-        color_map = {self.ARP_OFF: LogicalColor.RED_HIGH, self.ARP_UP: LogicalColor.GREEN_HIGH, self.ARP_DOWN: LogicalColor.AMBER_HIGH}
-        self._show_hint("A", color_map[next_mode])
-        self._arp_mode = next_mode
+        # Short press = enable/disable ARP. When disabled the pads still send
+        # MIDI straight to the Force (normal playing).
         if self._arp_mode == self.ARP_OFF:
-            self._release_all_notes()
-        else:
+            color_map = {self.ARP_UP: LogicalColor.GREEN_HIGH}
+            self._show_hint("A", LogicalColor.GREEN_HIGH)
+            self._arp_mode = self.ARP_UP
             self._arp_interval = 60.0 / self._bpm / 4.0
             self._arp_step = 0
             self._last_arp_progress = 0.0
+        else:
+            self._show_hint("A", LogicalColor.RED_HIGH)
+            self._arp_mode = self.ARP_OFF
+            self._release_all_notes()
         self._render()
         self._render_controls()
 
@@ -364,6 +371,7 @@ class InstrumentMode(Mode):
             return
 
         if self._hold and note in self._active_notes:
+            self._gate_notes.pop(note, None)
             self._send_note_off(note)
             return
 
@@ -372,9 +380,9 @@ class InstrumentMode(Mode):
 
         if self._input_mode == "chords":
             for interval in self._chord:
-                self._send_note_on(note + interval)
+                self._send_note_on(note + interval, gate=True)
         else:
-            self._send_note_on(note)
+            self._send_note_on(note, gate=True)
 
         if self._arp_mode != self.ARP_OFF:
             self._arp_step = 0
@@ -384,10 +392,19 @@ class InstrumentMode(Mode):
         note = self._get_note(x, y)
         if note is None:
             return
+        # With the ARP running the arp cycles notes through _active_notes, so
+        # releasing the gate pad must stop the whole arp (unless hold latches
+        # it) — otherwise the arp keeps playing forever on its last note.
+        if self._arp_mode != self.ARP_OFF and not self._hold:
+            self._release_all_notes()
+            return
+        self._gate_notes.pop(note, None)
         self._send_note_off(note)
 
-    def _send_note_on(self, note: int):
+    def _send_note_on(self, note: int, gate: bool = False):
         self._active_notes[note] = time.monotonic()
+        if gate:
+            self._gate_notes[note] = time.monotonic()
         if self.midi_manager:
             try:
                 self.midi_manager.send_force([0x90, note, 100])
@@ -408,13 +425,16 @@ class InstrumentMode(Mode):
         notes = list(self._active_notes.keys())
         for note in notes:
             self._send_note_off(note)
+        self._gate_notes.clear()
 
     def _advance_arp(self):
         if not self._active_notes:
             return
 
         pattern = _load_arp_pattern(self._arp_pattern_name)
-        sorted_notes = sorted(self._active_notes.keys())
+        # Base = the notes held on the pads (the gate), not whatever the arp
+        # last sounded — otherwise the pattern walks up an octave per step.
+        sorted_notes = sorted(self._gate_notes.keys()) if self._gate_notes else sorted(self._active_notes.keys())
         if self._arp_mode == self.ARP_DOWN:
             sorted_notes.reverse()
 
@@ -433,7 +453,9 @@ class InstrumentMode(Mode):
         if not self._arp_transpose_diatonic:
             return interval
         note_in_octave = base_note % 12
-        octave = base_note // 12
+        # Octave of the base note RELATIVE to the scale root — using the raw
+        # note number (e.g. 50//12) put every arp note 4 octaves up.
+        octave = (base_note - self._root_note) // 12
         s = self._scale
         degree = next((i for i, si in enumerate(s)
                        if (self._root_note + si) % 12 == note_in_octave), 0)
@@ -529,10 +551,8 @@ class InstrumentMode(Mode):
 
         if self._arp_mode == self.ARP_OFF:
             d_color = LogicalColor.RED_HIGH
-        elif self._arp_mode == self.ARP_UP:
-            d_color = LogicalColor.GREEN_HIGH
         else:
-            d_color = LogicalColor.AMBER_HIGH
+            d_color = LogicalColor.GREEN_HIGH
         self.controller.send_right_column_led(self.CTRL_ARP, d_color)
 
         e_color = ARP_PATTERN_COLORS.get(self._arp_pattern_idx, LogicalColor.OFF)

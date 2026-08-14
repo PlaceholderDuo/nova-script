@@ -1,0 +1,16 @@
+{
+  "name": "nova-script-browser-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reusable browser-automation test suite for nova-script's virtualizer UI — tests every LED, button, timing and error path the way a live gig exercises it.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:one": "playwright test",
+    "test:debug": "playwright test --debug",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.45.0"
+  }
+}

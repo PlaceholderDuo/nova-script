@@ -21,6 +21,7 @@ from src.ui.modes.performance import PerformanceMode
 from src.ui.modes.clip_launcher import ClipLauncherMode
 from src.ui.modes.instrument import InstrumentMode
 from src.ui.modes.arp_edit import ArpEditMode
+from src.ui.modes.light_show import LightShowMode
 from src.ui.overlay_manager import OverlayManager
 from src.ui.startup_wave import StartupWave
 from src.ui.image_store import ImageStore
@@ -57,6 +58,7 @@ class Engine:
         self._message_mode: Optional[MessageMode] = None
         self._virt_ws = None
         self._virt_last_info: str = ""
+        self._arp_exit_pending_release: bool = False
 
     def set_tui_queue(self, queue):
         self._tui_queue = queue
@@ -157,6 +159,33 @@ class Engine:
         if force:
             self.midi_manager.register_force_output(force)
 
+        # Alesis V25 — separate, non-Novation input device (MIDI thru to Force).
+        v25_cfg = self.config.get("midi", {}).get("v25", {})
+        if v25_cfg:
+            from src.controllers.alesis_v25 import AlesisV25
+            self.controllers[AlesisV25.DEVICE_NAME] = AlesisV25(
+                self.midi_manager,
+                v25_cfg.get("target", ""),
+                input_pattern=v25_cfg.get("input_pattern", "V25"),
+                cc_remap=v25_cfg.get("cc_remap"),
+            )
+
+        # Generic MIDI thru routes (for future devices beyond the V25).
+        for route in self.config.get("midi", {}).get("thru", []):
+            src = route.get("source", "")
+            tgt = route.get("target", "")
+            chs = route.get("channels", None)
+            note = route.get("note_only", False)
+            remap = route.get("cc_remap", None)
+            if src and tgt:
+                try:
+                    from src.midi.routing import MidiThru
+                    MidiThru(self.midi_manager, src, tgt, channels=chs,
+                             note_only=note, cc_remap=remap)
+                    logger.info(f"MIDI thru: {src} → {tgt} (channels={chs}, note_only={note}, cc_remap={remap})")
+                except Exception as e:
+                    logger.warning(f"MIDI thru setup failed ({src}→{tgt}): {e}")
+
     def _setup_overlay(self):
         bpm = float(self.config.get("midi", {}).get("clock", {}).get("internal_bpm", 120))
         self.overlay = OverlayManager(
@@ -177,6 +206,7 @@ class Engine:
         self._clock.set_on_beat(self._on_beat)
         sc_config = self.config.get("screensaver", {})
         self.overlay.set_screensaver_brightness(sc_config.get("brightness", 100))
+        self.overlay.set_screensaver_enabled(sc_config.get("enabled", True))
         osc_msg_speed = self.config.get("osc", {}).get("scroll_speed_ms", 60)
         self.overlay.set_hud_scroll_speed_ms(osc_msg_speed)
 
@@ -196,7 +226,9 @@ class Engine:
                 {"label": "PERF", "mode": "performance", "color": "RED_HIGH", "x": 0, "y": 6, "w": 2, "h": 2},
                 {"label": "CLIP", "mode": "clip_launcher", "color": "RED_MED", "x": 2, "y": 6, "w": 2, "h": 2},
                 {"label": "SEQ", "mode": "sequencer", "color": "AMBER_HIGH", "x": 4, "y": 6, "w": 2, "h": 2},
-                {"label": "MIX", "mode": "mixer", "color": "GREEN_HIGH", "x": 6, "y": 6, "w": 2, "h": 2},
+                {"label": "MIX", "mode": "mixer", "color": "GREEN_HIGH", "x": 0, "y": 4, "w": 2, "h": 2},
+                {"label": "INST", "mode": "instrument", "color": "GREEN_MED", "x": 2, "y": 4, "w": 2, "h": 2},
+                {"label": "ARP", "mode": "arp_edit", "color": "AMBER_MED", "x": 4, "y": 4, "w": 2, "h": 2},
             ])
 
         self.mode_manager.register(menu_mode)
@@ -253,40 +285,58 @@ class Engine:
         )
         self.mode_manager.register(arp_edit)
 
+        light_show = LightShowMode(
+            self.grid,
+            self.controllers["Launchpad Mini"],
+            config=self.config.get("light_show"),
+        )
+        self.mode_manager.register(light_show)
+
         instrument.set_arp_edit_callback(self._enter_arp_edit)
 
         default_mode = self.config.get("ui", {}).get("default_mode", "performance")
         self.mode_manager.switch_to(default_mode)
 
-    def _enter_arp_edit(self):
+    def _enter_arp_edit(self, from_menu: bool = False):
         inst = self.mode_manager._modes.get("instrument")
         arp = self.mode_manager._modes.get("arp_edit")
-        if not inst or not arp:
+        if not arp:
             return
-        state = inst.get_arp_state()
-        arp.set_state(**state)
+        if inst and not from_menu:
+            state = inst.get_arp_state()
+            arp.set_state(**state)
         self.mode_manager.switch_to("arp_edit")
 
     def _exit_arp_edit(self):
         inst = self.mode_manager._modes.get("instrument")
         arp = self.mode_manager._modes.get("arp_edit")
-        if not inst or not arp:
+        if not arp:
             return
-        state = arp.get_state()
-        inst.update_from_arp_edit(state)
-        self.mode_manager.switch_to("instrument")
+        if inst:
+            state = arp.get_state()
+            inst.update_from_arp_edit(state)
+        if getattr(self.mode_manager, "_previous_mode_name", "") == "menu":
+            self.mode_manager.switch_to("menu")
+        else:
+            self.mode_manager.switch_to("instrument")
 
     def _on_device_connect(self, device_name: str):
         logger.info(f"[ENGINE] Device connected: {device_name}")
-        if device_name in self.controllers:
-            self.controllers[device_name].on_connect()
+        ctrl = self.controllers.get(device_name)
+        if ctrl is not None:
+            on_connect = getattr(ctrl, "on_connect", None)
+            if callable(on_connect):
+                on_connect()
             if self.mode_manager and self.mode_manager.active_mode:
                 self.mode_manager.active_mode.enter()
 
     def _on_device_disconnect(self, device_name: str):
         logger.warning(f"[ENGINE] Device disconnected: {device_name}")
-        if device_name in self.controllers:
-            self.controllers[device_name].on_disconnect()
+        ctrl = self.controllers.get(device_name)
+        if ctrl is not None:
+            on_disconnect = getattr(ctrl, "on_disconnect", None)
+            if callable(on_disconnect):
+                on_disconnect()
 
     def _on_grid_event(self, event):
         if event.pressed:
@@ -306,6 +356,25 @@ class Engine:
         is_press = "PRESS" in event.event_type.name
         if self.overlay and is_press:
             self.overlay.mark_activity()
+
+        # Mode-specific exits take priority over global combos, otherwise a
+        # combo (e.g. 200 = "home") would shadow the ARP-edit exit button.
+        # We must swallow the paired RELEASE too, or it decays into "home".
+        if is_press and self.mode_manager and not self.overlay.is_overlay_active:
+            if self.mode_manager.active_mode_name == "arp_edit" and event.control_id == 200:
+                arp = self.mode_manager._modes.get("arp_edit")
+                if arp is not None and getattr(arp, "is_note_length_mode", lambda: False)():
+                    # Top-1 in note-length mode = back to the pattern editor.
+                    self._arp_exit_pending_release = True
+                    arp.exit_note_length()
+                    return
+                self._arp_exit_pending_release = True
+                self._exit_arp_edit()
+                return
+        if self._arp_exit_pending_release:
+            self._arp_exit_pending_release = False
+            return
+
         if self._combo:
             result = self._combo.feed(event.control_id, is_press)
             if result == "consumed":
@@ -320,22 +389,19 @@ class Engine:
                 self.overlay.trigger_fireworks()
                 return
 
-        if is_press and not self.overlay.is_overlay_active:
-            if (self.mode_manager and self.mode_manager.active_mode_name == "arp_edit"
-                    and event.control_id == 200):
-                self._exit_arp_edit()
-                return
-
-            shortcuts = {201: "performance", 202: "clip_launcher", 203: "sequencer", 204: "mixer", 205: "instrument"}
-            if event.control_id in shortcuts:
-                mode_name = shortcuts[event.control_id]
-                if mode_name in self.mode_manager._modes:
-                    self.mode_manager.switch_to(mode_name)
-                    return
-
         if self.overlay:
             if self.overlay.handle_control_event(event):
                 return
+
+        if is_press and not self.overlay.is_overlay_active:
+            if 201 <= event.control_id <= 208:
+                top_idx = event.control_id - 200
+                menu_mode = self.mode_manager._modes.get("menu")
+                if menu_mode and top_idx < len(menu_mode._items):
+                    item = menu_mode._items[top_idx]
+                    if "mode" in item and item["mode"] in self.mode_manager._modes:
+                        self.mode_manager.switch_to(item["mode"])
+                        return
         if self.mode_manager:
             self.mode_manager.handle_control_event(event)
 
@@ -363,6 +429,17 @@ class Engine:
     def _on_beat(self, beat_count: int):
         self._beat_led_on = True
         self._beat_led_off_time = time.monotonic() + 0.12
+
+        # Forward the beat to the active mode if it wants one (Light Show
+        # pulses are beat-quantized so flashes land on the grid).
+        if self.mode_manager:
+            m = self.mode_manager._modes.get(self.mode_manager.active_mode_name)
+            if m and hasattr(m, "on_beat"):
+                try:
+                    m.on_beat(beat_count)
+                except Exception:
+                    pass
+
         mode = self.config.get("ui", {}).get("downbeat_flash", "tempo_led")
 
         is_downbeat = (beat_count % 4 == 1)
@@ -455,7 +532,7 @@ class Engine:
         if self._combo:
             result = self._combo.tick()
             if result == "home":
-                self.mode_manager.switch_to("performance")
+                self.mode_manager.switch_to("menu")
 
         if self.overlay:
             self.overlay.tick(delta_ms, now=now)
@@ -465,7 +542,7 @@ class Engine:
             self.mode_manager.tick(delta_ms)
 
         if self._clock and self.mode_manager:
-            for mode_name in ("performance", "clip_launcher"):
+            for mode_name in ("performance", "clip_launcher", "light_show"):
                 m = self.mode_manager._modes.get(mode_name)
                 if m and hasattr(m, "set_bpm"):
                     m.set_bpm(self._clock.bpm)
@@ -520,6 +597,7 @@ class Engine:
         return {"mode": mode, "page": page, "subpage": subpage}
 
     async def _virt_sync_loop(self):
+        fail_backoff = 1.0
         while self._running:
             try:
                 if self._virt_ws is None:
@@ -527,14 +605,19 @@ class Engine:
                     self._virt_ws = await websockets.connect(
                         "ws://localhost:8766", open_timeout=2, close_timeout=1
                     )
+                    logger.info("Virt sync: connected to virtualizer")
+                    fail_backoff = 1.0
                 info = self._build_virt_info()
                 info_str = json.dumps(info)
                 if info_str != self._virt_last_info:
                     await self._virt_ws.send(json.dumps({"action": "set_info", **info}))
                     self._virt_last_info = info_str
+                await asyncio.sleep(0.2)
             except Exception:
                 self._virt_ws = None
-            await asyncio.sleep(1)
+                # Virtualizer not running — retry infrequently, don't spam the log.
+                await asyncio.sleep(fail_backoff)
+                fail_backoff = min(fail_backoff * 2, 15.0)
 
     async def _tui_broadcast_loop(self):
         while self._running:

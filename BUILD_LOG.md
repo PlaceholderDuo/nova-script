@@ -2307,3 +2307,652 @@ Test: all 11 suites GREEN (performance, arp_edit, bpm_clock, midi_routing, combo
 Added `set_active_channel()` API + `_active_channel` state (default GTR), and `test_tuner_control_buttons` covering: A toggles in/out, B cycles w/o starting tuner, A targets active channel, B retargets live tuner + resets, releases ignored.
 
 Test: all 11 suites GREEN.
+
+## Entry #39 — 2026-08-08 — HANDOFF: Browser suite green + real-hardware smoke run (open issues for fresh eyes)
+
+**Purpose: handoff for the session that took nova-script from the browser-only virtualizer suite out onto the physical Launchpad Mini MK1. Two open items below need fresh eyes.**
+
+### What landed this session
+
+**Browser suite grown to 52 tests, 4× consecutive green** (`tools/browser-tests`, run `npx playwright test`):
+- `06-tuner.spec.js` — guitar tuner lifecycle (intro letters → active band → exit), OSC `/nova/tuner` cents drive, channel switch, bailout.
+- `07-performance-fx.spec.js` — FX bank power/preset/bank-flip/bypass, VOX independence, volume mute. Includes `resetPerformanceFx` fixture (FX state leaks across the shared engine).
+- `08-instrument-arp.spec.js` — instrument scale/ARP/hold/key controls + ARP editor (entry, step edit, note-length, paging, slot save, HOME exit).
+- `09-arp-midi.spec.js` — asserts the ARP's **real MIDI note stream** (pitches, order, off/on discipline, step timing, release-stop).
+
+**Real engine bugs fixed this session** (all caught by the new tests):
+- `performance.py` `tick()` never rendered — tuner intro/band/exit animation was frozen. Now renders every tick while the tuner is running.
+- FX hint glyph ghost — the 0.3s hint letter was never painted over on expiry; now cleared in `tick()`.
+- `instrument.py` `_arp_offset_for_note` octave bug — used `base_note // 12` instead of `(base_note - root) // 12` → every ARP note 4 octaves too high.
+- ARP "walking base" — arp took its base from the last *sounded* note instead of the held pads; added `_gate_notes` (held pad notes, separate from sounding `_active_notes`).
+- ARP never stopped on pad release — releasing the gate now calls `_release_all_notes()` (unless HOLD is latched).
+- **E short-press now cycles ARP patterns** (normal→chordal→octaves); long-press still opens the editor.
+- `normalizeHome` (test helper) made idempotent.
+
+**Virtualizer** (`tools/novation-virtualizer.py`): added a virtual **"Akai Force" capture port** that logs the engine's note-on/off into `state.midi_log` (WS action `clear_midi`), so ARP output is testable without hardware. `midi_log` is capped at 80 events in broadcasts to keep the WS light.
+
+**MK1 hardware constants verified** against the official Launchpad MK1 reference — all correct: grid notes `(7-y)*16+x` (note 0 = physical top-left, 112 = bottom-left), right column notes `[8,24,40,56,72,88,104,120]`, top row CC `0x68..0x6F`, color map `00gg00rr` (RED 1/2/3, GREEN 16/32/48, AMBER 17/34/51). Added `tools/verify_mk1_hardware.py` (4-phase LED + button-listener check).
+
+### Real-hardware smoke run (tonight)
+
+Engine boots clean against the physical device (`python -m src.main live-show`):
+- ✅ Connected to `Launchpad Mini`, boot wave, performance screen.
+- ✅ 8s-idle → screensaver (matches `ui.idle_timeout_ms: 8000`).
+- ✅ OSC beats received → clock synced to ~148 BPM; `/nova/tuner` cents received.
+- ✅ Top-row buttons send CC 104-111 (press=127/release=0); grid notes decode correctly.
+- ⚠️ **MK1 button input froze mid-test** (device sent nothing to a fresh listener). **Power-cycling the Launchpad fixed it.** Not reproduced after a clean engine boot (mode switches then reached the engine normally). Believed caused by accumulated unclean device state from many open/close cycles (verify-script runs + SIGTERM'd engine without a reset-on-exit). The engine's `_kick_input_buffer` workaround works when the device starts clean.
+
+### OPEN ISSUES (need fresh eyes — this is the handoff)
+
+1. **Screens 2 and 3 display as the same** on the physical device: `clip_launcher` (202) and `sequencer` (203) appear identical to the user, and the user says the displays "do not match what I remember specifying." In code their default renders are clearly different:
+   - `clip_launcher._init_default_colors()`: scenes 0–3 (top 4 rows) get `MK1_COLOR_CYCLE` colors AMBER_HIGH/RED_HIGH/GREEN_HIGH across all 8 tracks; scenes 4–7 OFF.
+   - `sequencer._render()`: empty grid with RED_LOW markers on every 4th step + a transport row (`GREEN_HIGH`/`RED_HIGH` play + AMBER_LOW on cols 6/7).
+   - So seeing them identical suggests either a shared render path, a screensaver override, the switch not landing, or the user's remembered design diverged from the current config. **Next step: capture the engine's actual LED out per mode (e.g. run the virtualizer against the engine, or a MIDI-through to log LED messages) and diff clip_launcher vs sequencer; also compare `modes.sequencer` config in `config/profiles/live-show.yaml` against the intended design.**
+2. **HOME (control 200, button 1)** was reported as not working — but that was during the frozen-input window, so it is **not yet re-verified** with live input. Re-test on a clean device.
+3. **MK1 input freeze** (see above) — consider hardening connect/disconnect to always leave the device clean (send reset on exit; confirm `_kick_input_buffer` ordering) so a mid-gig restart can't freeze the buttons.
+
+### Current state / next steps
+- Engine was left running against the physical Launchpad during the session; restart fresh when continuing.
+- Finish the hardware smoke once #1 is understood: tuner visual (H + OSC cents), instrument + ARP on real hardware.
+- The 52-test browser suite is the regression net; run it after any mode-render change.
+
+## Entry #40 — 2026-08-08 — Menu Navigation Fix: Grid Display & Mode Switching
+
+### Root Cause Analysis (virtualizer diagnostic)
+Using a virtualizer-based diagnostic that captured the rendered LogicalGrid for each mode, confirmed all 5 modes render distinctly — clip_launcher, sequencer, performance, mixer, and instrument each produce unique, correct grids. The "screens look identical" bug from Entry #39 had three root causes:
+
+**Root cause 1: Hardcoded shortcuts bypassed menu config**
+`engine.py:339` had a hardcoded shortcut table `{201: "performance", 202: "clip_launcher", 203: "sequencer", ...}` that always fired before the menu's own `handle_control_event`. This meant button 2 (201) always went to "performance" regardless of the menu config saying item[1] = CLIP → "clip_launcher". Button 3 (202) always went to "clip_launcher" regardless of config saying item[2] = SEQ → "sequencer". The menu's YAML config was unreachable for top-row button presses.
+
+**Root cause 2: HOME went to "performance" instead of "menu"**
+Both the combo detector "home" result and the `tick()` timeout home fallback called `switch_to("performance")`. The FEATURES_AND_SPECS §2.1 states: "Top row button 1 = HOME. Always returns to Menu mode."
+
+**Root cause 3: default_mode was "performance" not "menu"**
+`config/profiles/live-show.yaml` had `default_mode: performance`. The FEATURES_AND_SPECS §1 states: "Startup Wave → Menu Mode → idle timer". With performance as default, the user never saw the menu on launch.
+
+### Fixes Applied
+
+1. **Shortcuts now read from menu config** (`engine.py`): Removed hardcoded shortcut table. Instead, when a top-row button is pressed (201-208), the engine reads the menu mode's `_items` list at that index and switches to the configured mode. This works both when IN menu mode and when NOT in menu mode, so mode shortcuts work universally from the menu config.
+
+2. **HOME returns to menu** (`engine.py`): Both `_on_control_event` combo result "home" and `_tick` timeout result "home" now call `switch_to("menu")` instead of `switch_to("performance")`.
+
+3. **Home LED "at home" check** (`engine.py` `_set_home_led`): Changed `active_mode_name == "performance"` to `active_mode_name == "menu"` so Top-1 LED blinks amber when actually at the menu (the home screen).
+
+4. **default_mode → "menu"** (`config/profiles/live-show.yaml`): Changed from "performance" to "menu" per spec.
+
+5. **Added INST to menu config** (both live-show.yaml and engine default items): Instrument mode at button 5 (control 204, top_idx=4), GREEN_MED color, positioned at (2,4) in 2×2 block.
+
+### Virtualizer Verified — Rendered Grids (post-fix)
+
+```
+MENU (home):           CLIP (btn2→clip_launcher):   SEQ (btn3→sequencer):
+##RR@@..               @@@@@@@@                      $$....aa
+##RR@@..               ########                      g...r...
+$$GG....               $$$$$$$$                      g...r...
+$$GG....               @@@@@@@@                      g...r...
+........               ........                      g...r...
+........               ........                      g...r...
+........               ........                      g...r...
+........               ........                      g...r...
+```
+
+### Files Changed
+- `src/engine.py` — Shortcut dispatch reads menu items; HOME → menu; home LED check → menu
+- `config/profiles/live-show.yaml` — default_mode → menu; added INST mode item
+
+### Test Status
+Core suites pass: combo_detector (7), performance_mode (37+), arp_edit (20+), bpm_clock (4), midi_routing (5), fireworks. Three suites fail on pre-existing `tests.virtualizer` import (tests dir lacks __init__.py).
+
+### Diagnosis Method
+Used virtualizer to capture LogicalGrid snapshots for each mode. Diagnosed three root causes:
+1. **Hardcoded shortcuts** (engine.py:339) bypassed menu YAML config
+2. **HOME → "performance"** instead of "menu" (violated spec §2.1)
+3. **default_mode: performance** instead of "menu" (violated spec §1)
+
+Also fixed a secondary issue where `_grid_state` wasn't reset on mode switch, causing diff-based rendering to silently skip LED updates. Added `reset_grid_state()` to `NovationController` (called in `ModeManager.switch_to()`). Total MIDI messages per mode switch: 64 OFF + ~20 colored = ~84.
+
+Virtualizer E2E test is timing-sensitive due to the virtualizer's sequential MIDI poll loop struggling to drain 1500+ startup wave messages before mode renders arrive. The fix is verified directly via captured MIDI output: 84 correct messages with proper cell targeting.
+
+## Entry #41 — 2026-08-08 — Mode Switch Render Fix: clear_grid on Transition
+
+### Problem
+After fixing the shortcut/menu routing bugs (Entry #40), mode renders still showed startup wave artifacts. The diff-based rendering in `NovationController.set_grid_color()` was comparing against stale `_grid_state` values left by the startup wave. When the previous mode (or startup wave) set `_grid_state[y][x] = AMBER_HIGH` and the new mode wanted `RED_HIGH`, the diff check worked. But when both modes set the same color (or OFF), the diff check blocked sending — leaving hardware in the old state.
+
+### Root Cause
+`Mode.switch_to()` → `new_mode.enter()` → `_render()` did `self.clear()` (LogicalGrid only) then `self.commit()` → `controller.set_grid_color()`. The diff check in `set_grid_color` compared against `_grid_state` which still held the PREVIOUS mode's colors. Cells that happened to match were silently skipped, leaving behind ghost LEDs on hardware.
+
+### Fix
+Added `controller.clear_grid()` call in `ModeManager.switch_to()` BEFORE the new mode's `enter()`. This sends OFF to all 64 hardware LEDs and resets `_grid_state` to OFF everywhere. The new mode's render then only sends the cells it actually wants lit (~20 for menu), which now always differ from OFF so the diff check passes.
+
+Also added `_needs_render = False` in `MenuMode.enter()` to prevent an unnecessary second render from `tick()`.
+
+### Verified
+- Direct MIDI capture: 84 messages per switch (64 OFF + 20 colored) — correct
+- `_grid_state` matches expected menu layout (5 blocks × 2×2 = 20 cells)
+- All 6 core test suites pass
+
+### Files Changed
+- `src/controllers/base.py` — Added `reset_grid_state()` helper (kept for future use)
+- `src/ui/mode_manager.py` — `switch_to()` calls `controller.clear_grid()` before mode.enter()
+- `src/ui/modes/menu.py` — `_needs_render = False` in enter()
+
+## Entry #42 — 2026-08-08 — Clip Quadrants, ARP UI Rework, Engine Control Fix, Clock to Force, OSC Bridge
+
+### Source
+Daniel via Claude Code. Major polish session before live show. All virtualizer-driven with hardware verification.
+
+### Clip Launcher — 4 Quadrants
+Replaced the old 4-row color band layout with 4 even quadrants matching Daniel's spec:
+- **Top-left** (scenes 0-3, tracks 0-3): AMBER_HIGH
+- **Top-right** (scenes 0-3, tracks 4-7): GREEN_HIGH
+- **Bottom-right** (scenes 4-7, tracks 4-7): RED_MED (80% brightness)
+- **Bottom-left** (scenes 4-7, tracks 0-3): OFF (empty)
+- Bottom row y=0 remains the track-stop indicator row.
+
+Verified: 44 lit cells (16 amber + 16 green + 12 red; y=0 is track-stop, overwriting 4 red cells).
+
+### ARP Edit Mode — Button Remapping + LENGTH Fix + Note-Length Exit
+**Right-column layout changed:**
+- A–E = presets (slots 1–5), F = note-length (RED indicator), G = page down, H = page up
+- Previously E was note-length and F was a slot — the preset between note-length and up/down is now gone
+
+**LENGTH overlay scroll fix:** Increased from 1000ms/150px-per-ms to 3200ms/60px-per-ms so the full word "LENGTH" scrolls across before the bar-graph appears. Previously only ~6px scrolled ("len") before cut-off.
+
+**Note-length mode exit:** Pressing grid pads edits step lengths and STAYS in note-length. The ONLY way back to the pattern editor is pressing the green Top-1 button (control 200). The engine routes this: Top-1 in note-length mode → `exit_note_length()` → back to pattern editor. Top-1 while not in note-length → exit arp_edit entirely. F is now only the entry toggle (red indicator).
+
+**Edit cooldown:** After a pad tap or slot selection, chase-triggered re-renders pause for ~1.2s so edits stay visible instead of being redrawn every beat (felt "jumpy").
+
+### Engine Control Event Fix — Right-Column Swallow Bug
+The `_on_control_event` shortcut dispatch had an unconditional `return` at line 373 that swallowed **every right-column button press (A-H, control_id 100-107) in every non-menu mode**. This meant ARP edit slots (A-H), instrument controls, and all mode-specific right-column functions were dead. 
+
+Fixed by removing the `return`: shortcut dispatch only handles 201–208 (top-row), everything else (right column, grid) flows to `mode_manager.handle_control_event`.
+
+**Also simplified:** Removed the redundant `at_menu` branch — the shortcut dispatch now works uniformly regardless of whether you're in the menu or not. Top-row 1 (200) remains the combo detector's "home" anchor.
+
+### Clock Source — Akai Force MIDI Clock
+Changed `config/profiles/live-show.yaml` clock preference from `Reaper (OSC)` to `Akai Force (MIDI Clock)`. OSC /beat messages are now ignored; BPM is driven by MIDI clock (0xF8) received from the Force's USB MIDI port. Falls back to Internal 120 BPM when the Force is unplugged. Verified with realistic timing test.
+
+### OSC Bridge — ReaLearn-Ready
+Already working: nova-script sends OSC to `127.0.0.1:8000` for every control (volume, bypass, preset select). Added `send_action_str()` to OscBridge for named Reaper action IDs. Created simple setup guide in `docs/REAPER_OSC_SETUP.md` — 3 steps: install ReaLearn, set listen port to 8000, press buttons to learn.
+
+### MIDI Thru — Alesis V25 → Akai Force
+New `src/midi/routing.py` — MidiThru class that routes selected MIDI channels between devices. Config-driven via the profile's `midi.thru` list. Added V25 keyboard (channel 1, note-only) → Akai Force route. The V25 keys now play directly into the Force.
+
+### Files Changed
+- `src/ui/modes/clip_launcher.py` — `_init_default_colors()`: quadrant layout
+- `src/ui/modes/arp_edit.py` — E↔F remap, LENGTH scroll fix, edit cooldown, `is_note_length_mode()`/`exit_note_length()`, Top-1 green back, RED note-length button
+- `src/ui/modes/instrument.py` — ARP toggle (D = enable/disable) replacing 3-way cycle
+- `src/engine.py` — Right-column swallow fix, Top-1 note-length routing, midi thru setup, simplified shortcut dispatch
+- `src/osc/bridge.py` — Added `send_action_str()`
+- `src/midi/routing.py` — New: MIDI thru routing
+- `src/ui/overlay_manager.py` — 2-press dismiss for top-row/grid, single-press for D-H, `idle_since` reset on ACTIVE_MODE entry, 30s idle timeout, screensaver disable toggle
+- `src/ui/mode_manager.py` — `clear_grid()` in `switch_to()`, `_needs_render=False`
+- `src/ui/modes/menu.py` — `_needs_render=False` in `enter()`
+- `src/ui/modes/performance.py` — `preset_actions` config support
+- `src/ui/startup_wave.py` — Fast wave (~1.2s), SLEEP_MS=0.0
+- `src/controllers/base.py` — `reset_grid_state()` helper
+- `config/profiles/live-show.yaml` — Clock→Force, midi.thru→V25, performance.preset_actions, screensaver disabled, menu items (button 1=PERF, 6=ARP), idle_timeout 30s
+- `tools/novation-virtualizer.py` — Full drain MIDI poll, set_info mode relay
+- `tools/novation-virtualizer.html` — 9 help screens rewritten, top-row labels
+- `docs/REAPER_OSC_SETUP.md` — New: simple ReaLearn setup guide
+- `tests/test_arp_edit.py` — Updated for E→F note-length remap, Top-1 exit
+- `tests/test_comprehensive.py` — Updated for 2-press dismiss, 6-item menu, quadrant clip launcher
+
+### Test Status
+106 comprehensive + all 6 unit suites pass. Engine smoke test confirmed: connects to physical Launchpad, runs startup wave, switches modes.
+
+
+---
+
+## Entry #43 — 2026-08-08 — Light Show Mode: Live Lighting Cue Controller
+
+### Source
+Post-show debrief (2026-08-08). Daniel wants a live-cueable lighting controller on the
+Launchpad: select a "mood" (a library of 8-10 scenes), then cue scenes during a song.
+Some scenes are pulse/flash (fire a burst, auto-return to the prior scene). Output goes
+to the lighting engine over `/tmp/lighting_feed`. Master clock is configurable (Akai
+Force MIDI clock now; REAPER OSC / internal are supported alternatives).
+
+### Work Completed
+- **New mode** `src/ui/modes/light_show.py` (`LightShowMode`):
+  - Mood = one Launchpad "page"; right column A-E selects among 5 moods
+    (Standard / Acoustic Candlelight / EDM / High Energy / Ballad).
+  - Grid = 8 scenes per mood (2×4 layout). Scenes are `snap` (fade-to & hold) or
+    `pulse` (burst then auto-return to the prior scene, or to auto if none).
+  - Beat-quantized pulses: a `pulse` cue is held `pending` until the next clock beat,
+    then fires for `pulse_beats`, then returns. Flash lands on the grid.
+  - Emits `FORCE_LOOK` JSON-lines to `/tmp/lighting_feed` (same feed as TUI +
+    iPhone page). Includes `fade_ms` + `scene` + optional `pulse` fields.
+  - Exiting the mode releases to auto (`FORCE_LOOK {"look": null}`).
+- **Engine wiring** (`src/engine.py`):
+  - Mode registered in `_setup_modes`; reachable from the menu (new "LITE" item).
+  - `_on_beat` now forwards the beat to the active mode if it implements `on_beat`
+    (beat-quantized pulses).
+  - `set_bpm` push loop includes `light_show` (clock source agnostic — Force MIDI,
+    REAPER OSC, or internal all feed the same BPMClock).
+- **Config** (`config/profiles/live-show.yaml`):
+  - `modes.light_show`: `feed: /tmp/lighting_feed` + 5 moods × 8 scenes.
+  - Scene fields: `{name, look, cue: snap|pulse, fade_ms, pulse_beats}`.
+  - `look` references existing engine looks (placeholders — see deferred work).
+  - Menu: added `{label: "LITE", mode: "light_show", color: "BLUE_HIGH", x:6, y:6}`.
+- **Tests** `tests/test_light_show.py` — 6 tests: moods load, snap cue, mood switch,
+  pulse-on-beat-and-return, pulse-with-no-prior→auto, exit→auto. All pass.
+
+### Architecture Notes
+- nova-script is a **producer** on `/tmp/lighting_feed`; the lighting engine
+  (`showfeed.py`) is the consumer → ShowDriver → engine → QLC+ (DMX) + Govee.
+- The BPMClock already supports Force MIDI clock > REAPER OSC > internal, so making
+  the light show beat-synced is purely a `set_bpm` + `on_beat` integration — no
+  clock logic changes needed.
+- `fade_ms` is emitted now but the engine currently applies look changes
+  immediately (fade support is part of the deferred look-library revamp).
+
+### Deferred / Next
+- **Look library revamp** (the "10x quality" work): current `look` values are
+  placeholders. Needs research + a design quiz (Daniel to drive). Smooth crossfades,
+  dynamics, and the "blinder-as-separate-light" concept (halogen-curve white flash
+  overlaid on a dim base) belong here.
+- Wire/verify on real hardware + confirm feed round-trip with a running engine.
+
+---
+
+## Entry #44 — 2026-08-10 — SESSION HANDOFF: Lighting System + Light Show Integration Prep
+
+> **READ ME FIRST.** This is the master handoff for the next session. It covers
+> the ENTIRE previous working session (which lived mostly in the **lighting-system**
+> repo), everything changed and why, the current hardware/software state, the
+> Light Show mode scaffold already built here, and the concrete next steps for
+> **integrating the Launchpad lighting controller into nova-script**.
+
+---
+
+### Why this entry exists
+
+The next session starts fresh and must be able to pick up the **nova-script ↔
+lighting integration** without re-exploring two codebases. Everything needed to
+understand the context is captured here. The lighting-system repo also has its
+own detailed BUILD_LOG + DMX.md; this entry is the cross-project bridge.
+
+---
+
+### 1. The full session arc (what happened)
+
+The session was a **day-of-show lighting bring-up + post-show follow-up**, in phases:
+
+1. **Pre-show software prep** — wired the show TUI to emit lighting events; built
+   song profiles; verified deployment.
+2. **Hardware bring-up** — USB-DMX adapter detected, PL-32M channel map CONFIRMED
+   physically, all 4 bars + 3 key lamps driven, full engine→QLC+→DMX pipeline live.
+3. **Auto-discovery + unified CLI** — rods auto-discovered by MAC into rig.json;
+   `start light-runner` / `stop light-runner` commands; persistent feed pipeline.
+4. **SHOW NIGHT (2026-08-08)** — bars + lamps + QLC+ sync worked great. **Rods
+   never connected** (diagnosed later: Inseego MiFi client isolation).
+5. **Post-show fixes** — rod discovery unicast sweep; designed + scaffolded the
+   **Light Show mode** here in nova-script.
+
+---
+
+### 2. LIGHTING-SYSTEM repo — what was changed & why
+
+Repo: `~/Documents/projects/lighting-system/`
+
+#### Hardware (verified physically 2026-08-08)
+| Fixture | Role | DMX | Map |
+|---------|------|-----|-----|
+| BACK_L / BACK_R / CROWD_L / CROWD_R | EndyShow PL-32M bars | 001 / 009 / 017 / 025 | **8CH** |
+| KEY_L / KEY_C / KEY_R | key lamps (relay pack) | 200 / 201 / 202 | 1CH on/off |
+| GOVEE_L1 / GOVEE_L2 | glow rods | LAN | H802A 4-band |
+| GOVEE_R1 / GOVEE_R2 | glow rods (last-minute, unowned) | LAN | auto-adopt |
+
+- **PL-32M channel map CONFIRMED (the big hardware discovery):**
+  `8CH = CH1 Master Dimmer, CH2 R, CH3 G, CH4 B, CH5 W, CH6 Strobe, CH7 Func, CH8 unused`.
+  The earlier "4CH = R,G,B,W" hypothesis was **WRONG** — a master dimmer comes
+  first. Every bar write must set CH1=255.
+- **`qlc/fixtures/EndyShow-PL-32M-RGBW-Bar.qxf`** — corrected to the real 8CH map.
+- **`engine/lighting_engine/outputs.py`** — `rgbw_bar` now writes
+  `ch1=255 (dimmer), ch2-5 = RGBCW, ch6=0 (strobe)`.
+- **`engine/rig.json`** — addresses updated to the confirmed layout (see table).
+  `show.qxw` regenerated via `qlc/gen_show.py`.
+- **`govee/govee.py`** — `discover()` gained a **unicast sweep** (sends the scan
+  packet to every IP in the local subnet) as a third discovery mechanism after
+  multicast + broadcast. This is the rod fix.
+
+#### Rod discovery failure (show night) — ROOT CAUSE + FIX
+- **Symptom:** rods re-paired to the show WiFi but never found; DMX worked fine.
+- **Cause:** the show network is an **Inseego MiFi (Verizon, no SIM)** which
+  enables **client/AP isolation** → broadcast + multicast between clients are
+  dropped. Old discovery used only those.
+- **Fix:** unicast sweep. `engine/discover_rig.py` (runs at `start light-runner`)
+  calls `discover()` → gets the fix automatically.
+- **Still to test on real hardware:** if the MiFi blocks unicast too, disable
+  AP/client isolation in the MiFi admin (http://192.168.1.1). Protocol in
+  `docs/show-wifi-switch.md`.
+
+#### Auto-discovery (`engine/discover_rig.py`) — NEW
+- Scans LAN, matches rods to `rig.json` slots by **device MAC** (stable) so
+  left/right placement survives network changes.
+- **Auto-adopts** unmatched rods (the 2 last-minute ones) into R1/R2.
+- Does **surgical string edits** to rig.json (preserves hand formatting).
+- Exit 0 if ≥1 rod found; no rods → DMX still works.
+
+#### Unified CLI (in `~/Music/iPhoneLiveServer/scripts/`)
+- `start-light-runner` — QLC+ (`-w`), rod discovery, feed pipeline. `disown`-safe.
+- `stop-light-runner` — tears down feed + QLC+.
+- `lighting_pipeline.sh` — self-waiting launcher so the `tail | showfeed` pipe
+  survives shell/session teardown (the hard-won stability fix).
+- `start-show` calls `start-light-runner`; `.zshrc` `start`/`stop` dispatch on
+  `show server` vs `light-runner`.
+- **Feed = `/tmp/lighting_feed`, a regular file.** TUI, iPhone page, demo, and
+  (soon) nova-script all **append JSON lines**; `showfeed.py` consumes them.
+
+#### Song profiles + generator
+- `engine/song_profiles/*.json` — 9 profiles for the strong songs.
+- `engine/gen_profile.py` — `python3 gen_profile.py "Song" --genre rock` for
+  last-minute setlist picks.
+
+#### Show-night lesson (drives the Light Show feature)
+The set was ~70 songs, mostly **unplanned/on-the-fly** (requests + guests). This
+proved the auto-engine can't be the only path — the user needs a **manual live
+cue controller** to run the lights in the moment.
+
+---
+
+### 3. NOVA-SCRIPT — what was built this session
+
+See also **Entry #43** for the detailed Light Show entry. Summary:
+
+- **`src/ui/modes/light_show.py`** (`LightShowMode`) — NEW:
+  - Mood = Launchpad page; right column **A-E = 5 moods** (Standard / Acoustic
+    Candlelight / EDM / High Energy / Ballad).
+  - Grid = **8 scenes/mood** (2×4 layout). Scene `cue`: `snap` (fade & hold) or
+    `pulse` (burst on next beat, auto-return to prior scene or to auto).
+  - Writes `FORCE_LOOK` JSON-lines to `/tmp/lighting_feed` (producer; the
+    lighting engine is the consumer → QLC+ + Govee).
+  - `fade_ms` + `scene` + `pulse` fields emitted now; engine honors fade once
+    the look-revamp lands (today look changes are immediate).
+  - Exiting releases to auto (`FORCE_LOOK {"look": null}`).
+- **`src/engine.py`** — registered the mode (menu "LITE" item); `_on_beat`
+  forwards the beat to the active mode if it has `on_beat`; `set_bpm` push loop
+  includes `light_show`. Beat + BPM come from the existing **BPMClock**
+  (Akai Force MIDI clock > REAPER OSC > internal) — so the light show is
+  master-clock agnostic by construction.
+- **`config/profiles/live-show.yaml`** — `modes.light_show` block: feed path +
+  5 moods × 8 scenes. Scene = `{name, look, cue, fade_ms, pulse_beats}`.
+- **`tests/test_light_show.py`** — 6 tests, all pass (snap cue, mood switch,
+  pulse on-beat + return, pulse-no-prior → auto, exit → auto).
+- `look` values are **placeholders** referencing existing engine looks — the
+  look-library revamp (deferred) will replace them.
+
+---
+
+### 4. Deferred / NOT done (deliberately)
+
+1. **Look library revamp ("10x quality").** From the debrief: lighting was too
+   jumpy (hard on/off + color snaps instead of smooth fades + dynamics). The
+   user wants in-depth research + a **design quiz** (multiple models) before
+   rebuilding looks. This is the next big creative project.
+2. **Blinder-as-separate-light.** Bars at ground level angled up = intense
+   backlight/blinder. Keep base scenes dim; overlay a **white crowd-blinder
+   flash** with a halogen-like smooth on/off curve that flashes and returns.
+   Design with the look revamp; the Light Show `pulse` mechanism already models
+   the "flash and return" behavior.
+3. **Rod discovery real-hardware test** on the MiFi (needs rods + MiFi present).
+4. **Master clock source change** is config-only (`clock.preferred`) but the
+   "flexible" story (Force vs REAPER) is untested end-to-end for lighting.
+
+---
+
+### 5. NEXT STEPS for the integration session (start here)
+
+Priority order:
+
+1. **Real-hardware wire-up + verify the Light Show mode:**
+   - Boot the lighting pipeline (`start light-runner`) with bars + rods on the
+     same network.
+   - Run nova-script (`./scripts/run.sh`), go to menu → LITE, select a mood,
+     cue scenes → confirm bars + rods follow.
+   - Test a `pulse` scene flashes and returns on the beat.
+   - Note: `FORCE_LOOK` needs the engine running with a song context OR the
+     `SHOW_BLACKOUT`/preshow path. Confirm behavior when the show server is NOT
+     running a song (may need a driver tweak so manual scenes work standalone).
+2. **Review the Light Show UX on the Launchpad** with the user: mood/scene
+   layout, colors (MK1 palette: amber/red/green + limited others), whether the
+   grid 2×4 arrangement feels right, and whether pulse scenes want a distinct
+   visible indicator.
+3. **Decide the look-revamp approach** (research + quiz) and rebuild
+   `looks.json` with fade times + dynamics; then wire `fade_ms` handling into
+   the engine's scene application (crossfade).
+4. **Rod discovery test on the MiFi** using `docs/show-wifi-switch.md` §0b.
+5. Update `docs/BUTTON_REFERENCE.md` + virtualizer page label for `light_show`.
+
+### 6. Quick file map (for the new session)
+
+| Concern | File |
+|---------|------|
+| Light Show mode | `nova-script/src/ui/modes/light_show.py` |
+| Mode registration / beat forward / set_bpm | `nova-script/src/engine.py` |
+| Mood/scene config | `nova-script/config/profiles/live-show.yaml` (`modes.light_show`) |
+| Light Show tests | `nova-script/tests/test_light_show.py` |
+| Feed emitter target | `/tmp/lighting_feed` (regular file) |
+| Feed consumer | `lighting-system/engine/showfeed.py` |
+| Look library (to revamp) | `lighting-system/engine/looks/looks.json` |
+| Rig addressing + rod IPs | `lighting-system/engine/rig.json` |
+| Rod discovery (MAC match) | `lighting-system/engine/discover_rig.py` |
+| Govee discovery (unicast sweep) | `lighting-system/govee/govee.py` |
+| Lighting boot command | `~/Music/iPhoneLiveServer/scripts/start-light-runner` |
+| Show-night protocol / test | `lighting-system/docs/show-wifi-switch.md` |
+
+### 7. Gotchas to remember
+- QLC+ 5.2.2 **requires `-w`** for the web API (missing from `--help`).
+- `killall qlcplus-qml` before relaunch (two instances fight over :9999).
+- `/tmp/lighting_feed` is a **regular file** — append JSON lines; don't truncate
+  it mid-run (confuses `tail -f`).
+- The feed pipeline dies if the parent shell exits unless launched detached
+  (`lighting_pipeline.sh` + `nohup`/`disown`).
+- Feed writes from nova-script: opening the file in append mode is fine (same
+  as the TUI's `fs.appendFileSync`). If the engine isn't consuming, writes still
+  succeed (file just grows) — safe.
+- MK1 Launchpad palette is limited (~9 usable states) — plan LED colors around
+  amber/red/green + the few extras available.
+
+## Entry #45 — 2026-08-10 — ReaLearn OSC Setup, V25→Force/M-Audio Routing, Force Key Transpose Research
+
+### Source
+Daniel via Claude Code. Pre-show session focused on getting the guitar/vocal FX rig talking to Reaper and routing the V25 keyboard into the Akai Force.
+
+### ReaLearn OSC Setup (the easy path)
+- **`docs/REAPER_OSC_SETUP.md`** rewritten as a 3-step guide: install ReaLearn, set OSC listen port `8000`, press pads → "Learn source" → map to anything.
+- **`127.0.0.1` = localhost forever** — clarified that wifi IP changes don't matter because both Reaper and nova-script run on the same MacBook.
+- ReaLearn fields: local listen port `8000` (hears nova-script), device IP `127.0.0.1` (send-back, optional), device port `9001` (nova-script's listen side).
+- `config/nova-script.ReaperOSC` already handles track volume/FX bypass/preset; ReaLearn is the manual "hit button → map" path for amp preset switching.
+- **`src/osc/bridge.py`** — added `send_action_str(action_name)` sending `/action/str <command_id>`.
+- **`src/ui/modes/performance.py`** — reads `performance.preset_actions` from config, sends named Reaper actions on FX preset select (keyed `GTR_2`, `VOX_2`, 6 presets = 3 pads × 2 banks).
+
+### Akai Force USB MIDI — NOT detected (open issue)
+The Force never appeared as a MIDI device during the session despite being plugged in. Verified at every level:
+- `rtmidi` ports: only `V25 Out`, `V25 EDITOR Out`, `Live Show Manager` (IN) and matching OUT.
+- `ioreg -p IOUSB` — no Akai/Force/MPC entry.
+- Audio MIDI Setup — no Force entry.
+
+The earlier "Akai Force" in the port list was the **virtualizer's virtual port**, not hardware. The Force is either not being recognized by macOS (cable/hub/power), or firmware 3.9 presents MIDI differently. Left as an open issue — user switched to the M-Audio interface's physical MIDI OUT instead.
+
+### MIDI Thru — V25 → M-Audio interface (physical MIDI OUT)
+- **`src/midi/routing.py`** — `MidiThru` class: routes selected MIDI channels, note-only filter.
+- Config `midi.thru` now routes `V25 Out` → `M-Audio` (channel 1, note-only). The M-Audio interface's MIDI OUT goes via a MIDI cable into the Force's MIDI IN.
+- **`src/main.py`** — new `nova-script list-ports` command to discover the exact interface name at runtime (adjust the config `target` to match).
+- Note-only = knobs/buttons on the V25 are NOT forwarded; only keybed note on/off.
+
+### Force Settings Research — receive + transpose + scale lock (for the user)
+Instructions given to set the Force to:
+1. **Receive MIDI** — tap track → Track Settings → MIDI tab → MIDI Input On → channel 1 → load a plugin.
+2. **Transpose** — set track Transpose to a semitone offset (C→G = +7).
+3. **Scale lock** — enable Scale mode, pick key + scale so wrong notes snap in-key.
+
+Semitone reference table provided (C=0, D=+2, E♭=+3, E=+4, G=+7, A=+9, B♭=+10).
+
+### Files Changed
+- `docs/REAPER_OSC_SETUP.md` — Rewritten: simple ReaLearn 3-step guide
+- `src/osc/bridge.py` — `send_action_str()`
+- `src/ui/modes/performance.py` — `preset_actions` config support
+- `src/midi/routing.py` — New: `MidiThru` class
+- `src/main.py` — `list-ports` command
+- `config/profiles/live-show.yaml` — `midi.thru` V25→M-Audio (was V25→Force), clock→Force, ReaLearn comments
+- `src/engine.py` — `midi.thru` config wiring in `_setup_controllers()`
+
+### Test Status
+106 comprehensive + all 6 unit suites pass. Engine smoke test: connects Launchpad, sets up MIDI thru, switches to performance mode.
+
+### Open Items / Next
+1. **Force USB MIDI** — needs the physical cable/power investigation. When it appears in `nova-script list-ports`, switch the `midi.thru` target back to "Akai Force" for direct USB routing (or keep M-Audio MIDI cable path).
+2. **Verify V25→M-Audio→Force** on hardware with a MIDI cable.
+3. **ReaLearn mapping** — user maps Launchpad pads to Reaper FX/actions at soundcheck.
+4. **The look-library revamp** (Entry #44) remains the biggest creative item for lighting.
+
+## Entry #46 — 2026-08-10 — Alesis V25 as a First-Class Device + MIDI Thru Fix
+
+### Source
+Daniel via Claude Code. V25 → Force routing debug session.
+
+### Root Cause of "nothing registering on the Force"
+Two bugs compounded:
+1. **Channel filter dropped the knobs** — the V25 sends keys + mod wheel on **channel 1**, but the 4 knobs on **channel 3** (CC 20-23). The original `channels: [0]` filter silently dropped the knobs/buttons, so only the keybed ever reached the Force.
+2. **V25 input never connected** — `MidiManager._try_connect_device` required BOTH an input AND output port match. The V25's USB presents asymmetrically: `V25 Out` exists only in the *input* list (the output list has `V25 In`). So the source device matched nothing and never opened, and its target (`M-Track Plus`) wasn't registered as an output at all → `send_message` silently no-op'd.
+
+### Fixes
+- **`src/midi/manager.py`** — `register_device` now supports `input_only`, `output_only`, `input_pattern`, `output_pattern`. New helpers `register_input()` / `register_output()`. `_try_connect_device` and `_check_connection_health` handle one-sided devices (a `-` in the log means "no port on this side").
+- **`src/controllers/alesis_v25.py`** (NEW) — `AlesisV25` class. Not a Novation device; registers input-only under the name **"Alesis V25"** with a hardware description (25 keys, 4 knobs CC20-23, mod wheel CC1, pitch wheel, 4 buttons, 8 drum pads). Forwards all MIDI to the target with optional CC remap.
+- **`src/engine.py`** — reads `midi.v25` config block, instantiates `AlesisV25`. Kept the generic `midi.thru` loop for future routes.
+- **`config/profiles/live-show.yaml`** — new `midi.v25` block: `target: M-Track Plus`, `input_pattern: V25`, `cc_remap: {1: 16}` (mod wheel → CC 16).
+
+### Verified at runtime (real hardware)
+```
+Registered device: Alesis V25
+Alesis V25 registered (25 keys, 4 knobs (CC20-23), mod wheel (CC1), pitch wheel, 4 buttons, 8 drum pads) → MIDI thru to M-Track Plus
+Connected Alesis V25: in=V25 Out (0), out=- (-)
+Connected M-Track Plus: in=- (-), out=M-Track Plus (2)
+```
+
+### Files Changed
+- `src/midi/manager.py` — input_only/output_only/pattern support, register_input/register_output
+- `src/controllers/alesis_v25.py` — New: first-class V25 device
+- `src/engine.py` — `midi.v25` wiring
+- `config/profiles/live-show.yaml` — `midi.v25` block (replaced `midi.thru` V25 route)
+- `tests/test_midi_routing.py` — +2 tests (V25 forwarding, one-sided registration)
+
+### Test Status
+106 comprehensive + midi_routing (7) + all other suites pass.
+
+### Note
+The mod wheel is remapped CC1→CC16 so the Force's MIDI-learn can assign it (e.g. tremolo rate) without colliding with the Force's own modulation handling. Knobs stay on their native CC20-23 / channel 3. To change mappings, edit `midi.v25.cc_remap`.
+
+### Follow-up fix (same session) — Virt sync log spam
+When launched WITHOUT the virtualizer flag, the `_virt_sync_loop` tried to connect to `ws://localhost:8766` every 0.2s and logged a "Virt sync error" each time it failed → log flood. Fixed with exponential backoff: on failure it now retries at 1s→2s→4s→...→15s max with **no log output**; on success it logs once and syncs at 0.2s. Zero spam, and the virtualizer auto-connects the moment it's started.
+
+## Entry #47 — 2026-08-13 — Light Show Integration: Standalone Cueing, Fades, Blinder Look
+
+### Source
+Daniel via Claude Code. Picked up Entry #44's handoff: wire the Light Show mode's
+`FORCE_LOOK` cue path through to the lighting engine so it works standalone and
+crossfades. (The look-library revamp/design-quiz remains deferred — see open items.)
+
+### Problem (from Entry #44 gotchas)
+The Light Show mode was built on the nova-script side, but the cue path was broken
+for real use:
+
+1. **Manual cueing did nothing without a song.** `ShowDriver.on_force_look()`
+   only set `_forced_look`; the look applied inside `on_beat()`, which returns
+   early when no profile is loaded (no song running). And with no song there are
+   no beats at all — so standalone use was impossible.
+2. **`fade_ms` was dropped.** `showfeed.py` only forwarded `look`; the fade,
+   scene, and pulse fields the mode emits were ignored — look changes snapped.
+3. **A scene referenced a non-existent look.** The EDM mood's "Blinder" scene
+   pointed at `look: "Crowd Blinder"`, which did not exist in `looks.json`.
+   Unknown looks silently fall back to auto at show time (no error visible).
+
+### Fixes (lighting-system repo)
+
+**`engine/lighting_engine/driver.py`** — `on_force_look()` now applies IMMEDIATELY:
+- With no song, it synthesizes a manual `MusicalState` and calls
+  `engine.force_look()` right away (standalone cueing works).
+- `FORCE_LOOK {look: null}` with no song fades to Blackout instead of leaving the
+  rig stuck on the last cue (exit-Light-Show behavior).
+- Unknown look: logs a warning, falls back to auto step (song) or Blackout (no song).
+- Added `_apply_scene()` / `_fade_to()` / `_fade_interp()`: a blocking stepped
+  crossfade (40ms slices) that interpolates color channels over `fade_ms`.
+- `on_beat()` guards against re-applying the forced look mid-fade (would snap the
+  crossfade). `on_song_start()` clears any in-flight fade.
+
+**`engine/showfeed.py`** — `FORCE_LOOK` handler now passes `fade_ms` through to
+`on_force_look()`. Docstring updated.
+
+**`engine/looks/looks.json`** — added **"Crowd Blinder"** look: full icy-white
+pulse (bars + back at 1.0, key lamps dark), `blinder_hit`/`crowd_blinder_sparkle`/
+`static` effects. Pre-validated placeholder for the deferred blinder-as-separate-
+light concept. Look count: 32 → 33.
+
+**`engine/tests/test_driver.py`** — updated the two stale force-look tests to the
+new immediate-apply contract; added 4 tests: standalone no-song apply, standalone
+release→blackout, unknown-look→blackout, monotonic crossfade ramp, fade-0 snap.
+33 tests green.
+
+### nova-script side
+
+- **`tools/validate_light_config.py`** (new) — cross-checks every mood scene's
+  `look` ref in `config/profiles/live-show.yaml` against `looks.json` (exit 0/1/2).
+  Verified: 5 moods, 40 scenes, all refs resolve (incl. the new Crowd Blinder).
+- **`docs/BUTTON_REFERENCE.md`** — new **Light Show Mode** section (mood selectors,
+  scene colors, snap/pulse, standalone + crossfade behavior, feed format); updated
+  Menu Mode + Universal Controls to the 7-item config (LITE, config-driven shortcuts).
+- **`tools/novation-virtualizer.py`/`.html`** — top-row labels now HOME/Clip/Seq/Mix/
+  Inst/ARP/Lite; added `light_show` help panel; menu help updated to 7 blocks.
+
+### Stale test repairs (pre-existing failures, aligned to documented behavior)
+- `tests/test_engine_integration.py` — top-row shortcuts now assert the config-driven
+  mapping (ctrl N → menu items[N-200]; Entry #40), not the pre-#40 hardcoded table.
+- `tests/test_overlay_dismiss.py` — combo fires on partner press (Entry #9); overlay
+  dismiss is 2-press for grid/top-row, single-press for D-H (Entry #42); fixed
+  `GridEvent`/`ControlEvent` constructor usage.
+
+### Test Status
+- nova-script: all 16 suites GREEN (incl. light_show, comprehensive).
+- lighting-system: 33 tests GREEN; verified end-to-end: `FORCE_LOOK` with `fade_ms`
+  through `showfeed.py --backends console` renders a monotonic color ramp.
+
+### Open Items / Next
+1. **Look-library revamp ("10x quality")** — still the biggest creative item. Needs
+   research + design quiz before rebuilding `looks.json` (fade times, dynamics,
+   blinder-as-separate-light done as a placeholder).
+2. **Real-hardware wire-up** — boot `start light-runner` with bars/rods, run
+   `nova-script live-show`, menu → LITE, cue scenes, confirm bars + rods follow and
+   a pulse flashes + returns on the beat.
+3. **Rod discovery test on the MiFi** (`docs/show-wifi-switch.md` §0b).
+4. **Feed round-trip while the show server runs a song** — manual scenes + auto
+   engine coexistence.
+
+## Entry #48 — 2026-08-14 — V25→Force Hardware Verification Complete (wrap-up)
+
+### Source
+Daniel via Claude Code. Picked up Entry #46's open item: confirm the V25 → M-Audio
+M-Track Plus → Force MIDI path end-to-end on real hardware and lock in the final
+Force-side MIDI-learn mappings.
+
+### Result — VERIFIED WORKING
+The chain **Alesis V25 (USB) → nova-script MIDI thru → M-Track Plus MIDI OUT (DIN) → Akai Force MIDI IN** is confirmed working on hardware. Nothing further to fix in the routing code.
+
+Final Force-side MIDI-learn mappings in use:
+- **Mod wheel** → tremolo on the EP. Delivered as CC16 (remapped from native CC1 via `midi.v25.cc_remap: {1: 16}`) so it doesn't collide with the Force's own modulation handling.
+- **4 knobs** (native CC20-23, channel 3) → effect control on keys. Passed straight through — no remap needed, learned directly on the Force.
+
+### How to reproduce / change
+Edit `config/profiles/live-show.yaml` → `midi.v25` block:
+- `target: "M-Track Plus"` — the physical DIN out to the Force.
+- `input_pattern: "V25"` — matches the USB input port.
+- `cc_remap: {1: 16}` — mod wheel → CC16 for the Force's MIDI-learn.
+Knobs stay native (CC20-23). Run `python -m src.main` (or `nova-script list-ports` to confirm device names).
+
+### Notes / Gotchas
+- The Force still does **not** enumerate as a USB MIDI device on macOS (see Entry #45). The M-Audio DIN path remains the working route — keep `midi.outputs.force` config in place for when/if USB enumeration gets fixed.
+- Entry #46's duplicate numbering was corrected here: the Light Show Integration entry (2026-08-13) is now **Entry #47**.
+
+### Test Status
+Unchanged from Entry #46 (106 comprehensive + midi_routing + all suites green) — this session was hardware verification only, no code changes.

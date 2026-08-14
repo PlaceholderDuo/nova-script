@@ -11,6 +11,7 @@ import json
 import logging
 import signal
 import sys
+import time
 
 import rtmidi
 import websockets
@@ -76,7 +77,7 @@ DEVICE_PROFILES = {
         "protocol": "mk1",
         "row_cc": 0x68,
         "col_notes": [8, 24, 40, 56, 72, 88, 104, 120],
-        "top_labels": ["HOME", "Perf", "Clip", "Seq", "Mixer", "Page◀", "Page▶", "Rec"],
+        "top_labels": ["HOME", "Clip", "Seq", "Mix", "Inst", "ARP", "Lite", ""],
         "right_labels": ["A", "B", "C", "D", "E", "F", "G", "H"],
         "device_brand": "Launchpad Mini",
         "model_line": "MK1",
@@ -160,6 +161,67 @@ class VirtualDevice:
         self._midi_in: rtmidi.MidiIn | None = None
         self._midi_out: rtmidi.MidiOut | None = None
 
+        # Akai Force capture: the engine routes ARP/sequencer notes OUT to the
+        # "Akai Force". We expose a virtual port under that name so the engine
+        # connects to us, and we log every note-on/off so browser tests can
+        # assert the actual note stream (pitch, order, timing).
+        self._force_in: rtmidi.MidiIn | None = None
+        self._force_out: rtmidi.MidiOut | None = None
+        self._force_connected: bool = False
+        self.force_log: list[dict] = []
+        self._force_log_start: float = 0.0
+
+    def open_force_capture(self):
+        if self._force_in:
+            return
+        try:
+            self._force_in = rtmidi.MidiIn()
+            self._force_out = rtmidi.MidiOut()
+            self._force_in.open_virtual_port("Akai Force")
+            self._force_out.open_virtual_port("Akai Force")
+            self._force_connected = True
+            self.force_log = []
+            self._force_log_start = time.monotonic()
+            log.info("Virtual MIDI capture: 'Akai Force' (in+out)")
+        except Exception as e:
+            log.error(f"Force capture port creation failed: {e}")
+            self._force_in = None
+            self._force_out = None
+
+    def close_force_capture(self):
+        if self._force_in:
+            self._force_in.close_port()
+            self._force_in = None
+        if self._force_out:
+            self._force_out.close_port()
+            self._force_out = None
+        self._force_connected = False
+        log.info("Virtual MIDI capture closed: 'Akai Force'")
+
+    def clear_force_log(self):
+        self.force_log = []
+        self._force_log_start = time.monotonic()
+
+    def _record_force_msg(self, msg: list[int]):
+        if len(msg) < 3:
+            return
+        status, note, vel = msg[0], msg[1], msg[2]
+        typ = status & 0xF0
+        if typ == 0x90 and vel > 0:
+            ev_type = "note_on"
+        elif typ == 0x80 or (typ == 0x90 and vel == 0):
+            ev_type = "note_off"
+        else:
+            return
+        self.force_log.append({
+            "type": ev_type,
+            "note": note,
+            "vel": vel,
+            "t": round(time.monotonic() - self._force_log_start, 4),
+        })
+        if len(self.force_log) > 500:
+            self.force_log = self.force_log[-250:]
+
     @property
     def port_name(self):
         return self.profile["port_name"]
@@ -198,6 +260,7 @@ class VirtualDevice:
             self._midi_out.open_virtual_port(self.port_name)
             self.connected = True
             log.info(f"Virtual MIDI ports: '{self.port_name}' (in+out)")
+            self.open_force_capture()
         except Exception as e:
             log.error(f"MIDI port creation failed: {e}")
             if self._midi_in:
@@ -214,6 +277,7 @@ class VirtualDevice:
             self._midi_out = None
         self.connected = False
         log.info(f"Virtual MIDI ports closed: '{self.port_name}'")
+        self.close_force_capture()
 
     def handle_midi_in(self, msg: list[int]):
         if len(msg) < 3:
@@ -249,17 +313,49 @@ class VirtualDevice:
         self._midi_out.send_message(msg_factory(127))
         self._midi_out.send_message(msg_factory(0))
 
+    def _send_velocity(self, msg_factory, velocity: int):
+        """Send a single note/CC event with an explicit velocity (0 = release)."""
+        if not self._midi_out:
+            return
+        self._midi_out.send_message(msg_factory(velocity))
+
     def simulate_press(self, x: int, y: int):
         note = self._grid_pos_to_cmd(x, y)
         self._send_press_release(lambda v: [0x90, note, v])
+
+    def simulate_pad_down(self, x: int, y: int):
+        """Note-on only (velocity 127). Used for hold/double-tap tests."""
+        note = self._grid_pos_to_cmd(x, y)
+        self._send_velocity(lambda v: [0x90, note, v], 127)
+
+    def simulate_pad_up(self, x: int, y: int):
+        """Note-off only (velocity 0). Completes a held pad press."""
+        note = self._grid_pos_to_cmd(x, y)
+        self._send_velocity(lambda v: [0x90, note, v], 0)
 
     def simulate_top_row(self, index: int):
         cc = self.profile.get("row_cc", 0x68) + index
         self._send_press_release(lambda v: [0xB0, cc, v])
 
+    def simulate_top_down(self, index: int):
+        cc = self.profile.get("row_cc", 0x68) + index
+        self._send_velocity(lambda v: [0xB0, cc, v], 127)
+
+    def simulate_top_up(self, index: int):
+        cc = self.profile.get("row_cc", 0x68) + index
+        self._send_velocity(lambda v: [0xB0, cc, v], 0)
+
     def simulate_right_col(self, index: int):
         note = self.profile.get("col_notes", [])[index]
         self._send_press_release(lambda v: [0x90, note, v])
+
+    def simulate_right_down(self, index: int):
+        note = self.profile.get("col_notes", [])[index]
+        self._send_velocity(lambda v: [0x90, note, v], 127)
+
+    def simulate_right_up(self, index: int):
+        note = self.profile.get("col_notes", [])[index]
+        self._send_velocity(lambda v: [0x90, note, v], 0)
 
     def simulate_left_col(self, index: int):
         pass
@@ -323,6 +419,10 @@ class VirtualDevice:
             "mode": self.mode_name,
             "page": self.page_name,
             "subpage": self.subpage_name,
+            # Cap the broadcast copy: the full force_log can grow to hundreds
+            # of events (~25KB) and would bloat EVERY LED broadcast, starving
+            # the page's WebSocket under load. Tests only need the tail.
+            "midi_log": list(self.force_log[-80:]),
         }
 
 
@@ -343,13 +443,30 @@ class VirtualizerServer:
             self.device.connect_midi()
 
     async def _midi_poll(self):
+        last_force_broadcast = 0.0
         while self._running:
             dev = self.device
+            launchpad_msg = False
+            force_msg = False
             if dev._midi_in:
-                msg = dev._midi_in.get_message()
-                if msg:
+                while True:
+                    msg = dev._midi_in.get_message()
+                    if msg is None:
+                        break
                     dev.handle_midi_in(msg[0])
-                    await self._broadcast_state()
+                    launchpad_msg = True
+            if dev._force_in:
+                while True:
+                    fmsg = dev._force_in.get_message()
+                    if fmsg is None:
+                        break
+                    dev._record_force_msg(fmsg[0])
+                    force_msg = True
+            now = time.monotonic()
+            if launchpad_msg or (force_msg and (now - last_force_broadcast) >= 0.025):
+                await self._broadcast_state()
+                if force_msg:
+                    last_force_broadcast = now
             await asyncio.sleep(0.001)
 
     async def _broadcast_state(self):
@@ -389,10 +506,22 @@ class VirtualizerServer:
         try:
             if act == "press_pad":
                 d.simulate_press(action["x"], action["y"])
+            elif act == "pad_down":
+                d.simulate_pad_down(action["x"], action["y"])
+            elif act == "pad_up":
+                d.simulate_pad_up(action["x"], action["y"])
             elif act == "press_top":
                 d.simulate_top_row(action["index"])
+            elif act == "top_down":
+                d.simulate_top_down(action["index"])
+            elif act == "top_up":
+                d.simulate_top_up(action["index"])
             elif act == "press_right":
                 d.simulate_right_col(action["index"])
+            elif act == "right_down":
+                d.simulate_right_down(action["index"])
+            elif act == "right_up":
+                d.simulate_right_up(action["index"])
             elif act == "press_left":
                 d.simulate_left_col(action["index"])
             elif act == "knob":
@@ -409,6 +538,8 @@ class VirtualizerServer:
                 d.disconnect_midi()
             elif act == "clear":
                 d.clear()
+            elif act == "clear_midi":
+                d.clear_force_log()
             elif act == "get_state":
                 await ws.send(json.dumps(d.state_dict()))
                 return
@@ -416,6 +547,7 @@ class VirtualizerServer:
                 d.mode_name = action.get("mode", "")
                 d.page_name = action.get("page", "")
                 d.subpage_name = action.get("subpage", "")
+                log.info(f"set_info → mode={d.mode_name!r} (device id={id(d)})")
         except Exception as e:
             log.error(f"Action '{act}' failed: {e}")
         await self._broadcast_state()

@@ -156,10 +156,66 @@ def test_sequencer_off_on_same_note_as_on():
     print(f"  OK pitches match between on/off: {expected_ons}")
 
 
+def test_alesis_v25_forwarding():
+    print("=== Alesis V25 MIDI thru forwarding ===")
+    from src.controllers.alesis_v25 import AlesisV25
+
+    class FakeMgr:
+        def __init__(self):
+            self.sent = []
+            self.regs = []
+            self.cb = None
+
+        def register_input(self, name, cb, pattern=None):
+            self.regs.append(("in", name, pattern))
+            self.cb = cb
+
+        def register_output(self, name):
+            self.regs.append(("out", name))
+
+        def send_message(self, tgt, msg):
+            self.sent.append((tgt, msg))
+
+    m = FakeMgr()
+    v = AlesisV25(m, "M-Track Plus", cc_remap={1: 16})
+
+    assert ("in", "Alesis V25", "V25") in m.regs
+    assert ("out", "M-Track Plus") in m.regs
+
+    m.cb([0x90, 60, 100])       # key note ch1
+    assert m.sent[-1] == ("M-Track Plus", [0x90, 60, 100])
+    m.cb([0xB2, 20, 59])        # knob ch3 CC20
+    assert m.sent[-1] == ("M-Track Plus", [0xB2, 20, 59])
+    m.cb([0xB0, 1, 64])         # mod wheel CC1 -> CC16
+    assert m.sent[-1] == ("M-Track Plus", [0xB0, 16, 64])
+    m.cb([0xE0, 0, 64])         # pitch bend
+    assert m.sent[-1] == ("M-Track Plus", [0xE0, 0, 64])
+    print("  OK keys/knobs/mod-wheel/pitch-bend forward; mod wheel remapped")
+
+
+def test_input_output_only_registration():
+    print("=== input-only / output-only device registration ===")
+    from src.midi.manager import MidiManager
+    m = MidiManager.__new__(MidiManager)
+    m.devices = {}
+    m._input_callbacks = {}
+    m._device_configs = {}
+
+    m.register_input("Alesis V25", lambda msg: None, pattern="V25")
+    assert m._device_configs["Alesis V25"]["input_only"] is True
+    assert m._device_configs["Alesis V25"]["input_pattern"] == "V25"
+
+    m.register_output("M-Track Plus")
+    assert m._device_configs["M-Track Plus"]["output_only"] is True
+    print("  OK input_only/output_only flags set correctly")
+
+
 if __name__ == "__main__":
     test_manager_force_routing()
     test_manager_force_registration()
     test_register_force_output_blank_is_noop()
     test_sequencer_notes_and_offs_to_force()
     test_sequencer_off_on_same_note_as_on()
+    test_alesis_v25_forwarding()
+    test_input_output_only_registration()
     print("\nOK ALL MIDI ROUTING TESTS PASSED")

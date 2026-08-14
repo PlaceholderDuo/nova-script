@@ -124,8 +124,8 @@ class ArpEditMode(Mode):
         self._length_overlay_start: float = 0.0
         self._length_scroll_pos: float = 0.0
         self._length_scroll_last: float = 0.0
-        self._length_overlay_ms: int = 1000
-        self._length_px_per_ms: float = 1.0 / 150.0
+        self._length_overlay_ms: int = 3200
+        self._length_px_per_ms: float = 1.0 / 60.0
 
         # slot long-press save
         self._slot_press_rid: int | None = None
@@ -137,6 +137,7 @@ class ArpEditMode(Mode):
 
         self._entry_time: float = time.monotonic()
         self._beat_step: int = 0
+        self._last_edit_time: float = 0.0
 
         self._active_notes: set[int] = set()
         self._sound: dict[int, float | None] = {}
@@ -150,6 +151,15 @@ class ArpEditMode(Mode):
 
     def is_playing(self) -> bool:
         return True
+
+    def is_note_length_mode(self) -> bool:
+        return self._note_length_mode
+
+    def exit_note_length(self):
+        self._note_length_mode = False
+        self._length_overlay = False
+        self._note_edit()
+        self._render()
 
     def set_state(self, *, intervals: list[int], lengths: list[int],
                   pattern_name: str, current_slot: int,
@@ -210,7 +220,16 @@ class ArpEditMode(Mode):
 
         if self._needs_render:
             self._needs_render = False
+            # Chase steps re-request renders all the time; if the user just
+            # tapped a pad, keep their edit visible for a beat instead of
+            # having the chase redraw over it (feels jumpy/laggy).
+            if time.monotonic() - self._last_edit_time < 1.2:
+                return
             self._render()
+
+    def _note_edit(self):
+        """Mark a manual edit so chase-triggered re-renders pause briefly."""
+        self._last_edit_time = time.monotonic()
 
     def _show_length_overlay(self):
         self._length_overlay = True
@@ -303,6 +322,7 @@ class ArpEditMode(Mode):
             self._intervals[x] = scale_row
 
         self._preview_step(x)
+        self._note_edit()
         self._render()
 
     def handle_control_event(self, event: ControlEvent):
@@ -313,20 +333,16 @@ class ArpEditMode(Mode):
         is_press = "PRESS" in event.event_type.name
         is_release = "RELEASE" in event.event_type.name
 
-        # During note-length mode, A-H set global length on press — no long-press.
+        # During note-length mode, A-E and G-H set global length on press — no long-press.
+        # (F is the note-length mode indicator; the green top-row button exits.)
         if self._note_length_mode:
-            if is_press:
-                if rid == RIGHT_E:
-                    self._note_length_mode = False
-                    self._length_overlay = False
-                    self._render()
-                elif rid <= RIGHT_H:
-                    self._lengths = [rid - RIGHT_A + 1] * STEP_COUNT
-                    self._render()
+            if is_press and rid <= RIGHT_H and rid != RIGHT_F:
+                self._lengths = [rid - RIGHT_A + 1] * STEP_COUNT
+                self._render()
             return
 
         if is_press:
-            if rid == RIGHT_E:
+            if rid == RIGHT_F:
                 self._note_length_mode = True
                 self._show_length_overlay()
                 return
@@ -339,8 +355,9 @@ class ArpEditMode(Mode):
                 self._render()
                 return
 
-            # Track slot buttons for long-press save.
-            if rid <= RIGHT_H and rid not in (RIGHT_E, RIGHT_G, RIGHT_H):
+            # Track slot buttons for long-press save. E is a preset (slot 5);
+            # F is the note-length toggle; G/H page up/down.
+            if rid <= RIGHT_H and rid not in (RIGHT_F, RIGHT_G, RIGHT_H):
                 self._slot_press_rid = rid
                 self._slot_press_time = time.monotonic()
             return
@@ -356,11 +373,11 @@ class ArpEditMode(Mode):
                         return
                     self._handle_slot_select_by_rid(rid)
                     return
-            self._render()
 
     def _handle_slot_select_by_rid(self, rid: int):
         slots = SLOTS_PER_PAGE[self._arp_page]
         slot = slots[rid]
+        self._note_edit()
         if self._handle_slot_select(slot):
             self._render()
 
@@ -468,10 +485,7 @@ class ArpEditMode(Mode):
         for i in range(1, 8):
             lp.send_top_row_led(i, LogicalColor.OFF)
 
-        if self._note_length_mode:
-            lp.send_right_column_led(RIGHT_E, LogicalColor.RED_HIGH)
-        else:
-            lp.send_right_column_led(RIGHT_E, LogicalColor.RED_HIGH)
+        lp.send_right_column_led(RIGHT_F, LogicalColor.RED_HIGH)
 
     def _render_length_scroll(self):
         from src.ui.modes.message import FONT_5X5
@@ -536,7 +550,8 @@ class ArpEditMode(Mode):
 
         slots = SLOTS_PER_PAGE[self._arp_page]
         for i in range(NUM_PADS):
-            if i == RIGHT_E:
+            if i == RIGHT_F:
+                # Red = "enter note-length mode"
                 self.controller.send_right_column_led(i, LogicalColor.RED_HIGH)
                 continue
             if i == RIGHT_G:

@@ -181,16 +181,16 @@ def test_note_length_mode():
     mode.enter()
 
     assert mode._note_length_mode is False
-    from src.ui.modes.arp_edit import RIGHT_E
+    from src.ui.modes.arp_edit import RIGHT_F
 
-    mode.handle_control_event(type('E', (), {
-        'control_id': 100 + RIGHT_E,
+    mode.handle_control_event(type('F', (), {
+        'control_id': 100 + RIGHT_F,
         'event_type': type('T', (), {'name': 'RIGHT_COLUMN_PRESS'})(),
         'pressed': True,
     })())
     mode._render()
-    assert mode._note_length_mode is True, "E press should enter note-length mode"
-    print("  E press → note-length mode ON ✓")
+    assert mode._note_length_mode is True, "F press should enter note-length mode"
+    print("  F press → note-length mode ON ✓")
 
     mode.handle_grid_event(g_press(0, 1))
     mode._render()
@@ -202,13 +202,18 @@ def test_note_length_mode():
     assert mode._lengths[3] == 8, f"Step 3 y=7 press → length 8, got {mode._lengths[3]}"
     print("  Step 3 y=7 press → length 8 ✓")
 
-    mode.handle_control_event(type('E', (), {
-        'control_id': 100 + RIGHT_E,
+    mode.handle_control_event(type('F', (), {
+        'control_id': 100 + RIGHT_F,
         'event_type': type('T', (), {'name': 'RIGHT_COLUMN_PRESS'})(),
         'pressed': True,
     })())
-    assert mode._note_length_mode is False, "E press in note-length → exit"
-    print("  E press again → note-length mode OFF ✓")
+    assert mode._note_length_mode is True, "F press in note-length should NOT exit"
+    print("  F press again → stays in note-length mode ✓")
+
+    # Only the green top-row button (control 200) exits note-length
+    mode.exit_note_length()
+    assert mode._note_length_mode is False, "exit_note_length should return to pattern"
+    print("  Top-1 → note-length mode OFF ✓")
 
 
 def test_global_note_length_set():
@@ -413,26 +418,26 @@ def test_length_schedules_off_at_due_time():
     print(f"  Short note released on following step ✓")
 
 
-def test_length_overlay_activates_on_e():
-    print("\n=== LENGTH Overlay Activates on E ===")
+def test_length_overlay_activates_on_f():
+    print("\n=== LENGTH Overlay Activates on F ===")
     mode, _, _ = _make_mode()
-    from src.ui.modes.arp_edit import RIGHT_E
+    from src.ui.modes.arp_edit import RIGHT_F
     mode.handle_control_event(type('E', (), {
-        'control_id': 100 + RIGHT_E,
+        'control_id': 100 + RIGHT_F,
         'event_type': type('T', (), {'name': 'RIGHT_COLUMN_PRESS'})(),
         'pressed': True,
     })())
     assert mode._note_length_mode is True
     assert mode._length_overlay is True, "E press should trigger LENGTH scroll overlay"
-    print("  E press → note-length ON + overlay active ✓")
+    print("  F press → note-length ON + overlay active ✓")
 
 
 def test_length_overlay_draws_pixels():
-    print("\n=== LENGTH Overlay Draws Pixels ===")
+    print("\n=== LENGTH Overlay F ===")
     mode, grid, _ = _make_mode()
-    from src.ui.modes.arp_edit import RIGHT_E
+    from src.ui.modes.arp_edit import RIGHT_F
     mode.handle_control_event(type('E', (), {
-        'control_id': 100 + RIGHT_E,
+        'control_id': 100 + RIGHT_F,
         'event_type': type('T', (), {'name': 'RIGHT_COLUMN_PRESS'})(),
         'pressed': True,
     })())
@@ -447,9 +452,9 @@ def test_length_overlay_draws_pixels():
 def test_length_overlay_times_out_to_bars():
     print("\n=== LENGTH Overlay Times Out to Bars ===")
     mode, grid, _ = _make_mode()
-    from src.ui.modes.arp_edit import RIGHT_E
+    from src.ui.modes.arp_edit import RIGHT_F
     mode.handle_control_event(type('E', (), {
-        'control_id': 100 + RIGHT_E,
+        'control_id': 100 + RIGHT_F,
         'event_type': type('T', (), {'name': 'RIGHT_COLUMN_PRESS'})(),
         'pressed': True,
     })())
@@ -581,7 +586,7 @@ if __name__ == "__main__":
     test_legato_overlap_holds_note()
     test_legato_distinct_pitches_no_stacking()
     test_length_schedules_off_at_due_time()
-    test_length_overlay_activates_on_e()
+    test_length_overlay_activates_on_f()
     test_length_overlay_draws_pixels()
     test_length_overlay_times_out_to_bars()
     test_short_press_selects_slot()

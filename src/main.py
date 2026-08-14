@@ -205,6 +205,18 @@ def main():
         cmd_list()
         return
 
+    if args[0] == "list-ports":
+        import rtmidi
+        mi = rtmidi.MidiIn()
+        mo = rtmidi.MidiOut()
+        print("MIDI IN ports (→ nova-script receives from):")
+        for i, p in enumerate(mi.get_ports()):
+            print(f"  [{i}] {p}")
+        print("\nMIDI OUT ports (nova-script sends to →):")
+        for i, p in enumerate(mo.get_ports()):
+            print(f"  [{i}] {p}")
+        return
+
     if args[0] == "save":
         if len(args) < 2:
             print("Usage: nova-script save <profile-name>")

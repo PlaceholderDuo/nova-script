@@ -58,6 +58,10 @@ class VirtualMidiManager:
         self.sent_messages: list[list[int]] = []
         self._input_callback = None
         self._poll_running = False
+        # Mirror MidiManager.devices so consumers (e.g. Engine's TUI broadcast
+        # loop) can read a {name: DeviceConnection} map. Namedtuple keeps the
+        # shape compatible enough for `.connected` attribute access.
+        self.devices: dict[str, object] = {}
 
     def send_message(self, device_name: str, message: list[int], target: str = "main"):
         self.sent_messages.append(list(message))
@@ -65,8 +69,17 @@ class VirtualMidiManager:
     def send_force(self, message: list[int]):
         self.sent_messages.append(list(message))
 
-    def register_device(self, name: str, input_callback):
-        pass
+    def register_device(
+        self,
+        name: str,
+        input_callback,
+        extra_input_patterns: Optional[dict] = None,
+        extra_output_patterns: Optional[dict] = None,
+    ):
+        self._input_callback = input_callback
+        # Register as a connected pseudo-device so `.connected` reads True.
+        from types import SimpleNamespace
+        self.devices[name] = SimpleNamespace(connected=True)
 
     def inject_raw_midi(self, message: list[int]):
         """Simulate a MIDI event arriving from hardware."""
