@@ -1,5 +1,6 @@
 # Nova-Script Build Log
 
+
 ---
 
 ## Entry #1 — 2026-08-03 — Project Inception & Architecture Specification
@@ -2956,3 +2957,70 @@ Knobs stay native (CC20-23). Run `python -m src.main` (or `nova-script list-port
 
 ### Test Status
 Unchanged from Entry #46 (106 comprehensive + midi_routing + all suites green) — this session was hardware verification only, no code changes.
+
+## Entry #51 — 2026-08-14 — Alesis V25 Velocity Curve (Piano Feel)
+
+### Source
+Daniel via nova-script. The V25 keybed plays far too soft: he has to hit the
+keys super hard to get the same volume as a normal hit on the Force's own
+keys. Wanted the keyboard to feel much more like a real piano.
+
+### What was built
+
+Velocity shaping in the Alesis V25 MIDI thru (`src/controllers/alesis_v25.py`):
+
+- New `apply_velocity(in_vel, curve, power, boost, floor)`:
+  - `linear` — flat gain `out = in * boost` (`boost=1.0` is identity).
+  - `piano` — power curve `out = 127 * (in/127)^(1/power)`, boosts soft/medium
+    hits so a normal press lands near full strength while hard hits still reach
+    127 (default `power=2.0` = square-root curve).
+  - `floor` keeps very soft hits audible (default 1).
+- Applied on **note-on only** (velocity > 0). Velocity 0 (running-status
+  note-off) is never raised, so notes always release cleanly. Note-offs, CCs,
+  pitch bend pass through untouched.
+- `AlesisV25` gained a `velocity` kwarg; default is `linear` (passthrough) so
+  behavior is unchanged unless configured.
+
+Curve spot-checks (piano, power 2.0): `5→25, 15→44, 30→62, 50→80, 70→94,
+90→107, 110→118, 127→127`.
+
+> Tuned on request: `power` bumped **2.0 → 3.0** so soft hits come out harder
+> still. New spot-checks (piano, power 3.0): `5→43, 15→62, 30→78, 50→93,
+> 70→104, 90→113, 110→121, 127→127`.
+
+### Config
+
+`config/profiles/live-show.yaml` → `midi.v25.velocity`:
+```yaml
+    velocity:
+      curve: "piano"   # linear | piano
+      power: 3.0       # curve strength (1.0 = linear; >3.0 = more low-end boost)
+      boost: 1.0       # extra flat gain multiplier (linear + piano)
+      floor: 8         # minimum output velocity for very soft hits
+```
+Tuning on the rig: raise `power` for a stronger boost, or switch to
+`curve: linear` with `boost: 1.3` for a simple flat gain.
+
+### Verified
+
+- `.venv/bin/python -m pytest tests/test_midi_routing.py` → **10 passed**
+  (new: default identity passthrough, piano curve 40→71 / 127→127 / vel-0 note-off
+  stays 0 / CCs untouched, linear boost 100→127 clamp & 40→52).
+- `tests/test_engine_integration.py` → **13 passed**.
+- Config parses; engine passes `midi.v25.velocity` through to the controller.
+
+### Files
+
+| File | Changes |
+|------|---------|
+| `src/controllers/alesis_v25.py` | `apply_velocity()` + `velocity` kwarg, note-on velocity shaping in `handle_raw_midi` |
+| `src/engine.py` | Pass `v25_cfg.get("velocity")` to `AlesisV25` |
+| `config/profiles/live-show.yaml` | New `midi.v25.velocity` block (piano curve enabled) |
+| `tests/test_midi_routing.py` | +3 velocity tests |
+| `BUILD_LOG.md` | This entry |
+
+### Next
+
+- Hardware check on the rig: play the V25 keys → confirm the Force gets the
+  boosted velocities (and the mod wheel still arrives as CC16). Tune `power`
+  if the low-end still feels weak.
