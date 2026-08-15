@@ -168,6 +168,7 @@ class Engine:
                 v25_cfg.get("target", ""),
                 input_pattern=v25_cfg.get("input_pattern", "V25"),
                 cc_remap=v25_cfg.get("cc_remap"),
+                velocity=v25_cfg.get("velocity"),
             )
 
         # Generic MIDI thru routes (for future devices beyond the V25).

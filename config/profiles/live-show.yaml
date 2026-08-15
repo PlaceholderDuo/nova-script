@@ -16,6 +16,17 @@ midi:
     input_pattern: "V25"
     cc_remap:
       1: 16    # mod wheel (CC1) -> General Purpose 1 (CC16), MIDI-learn on Force
+    # Velocity shaping — the V25 keybed responds softly: normal presses land
+    # far quieter than the Force's own keys, forcing hard slams for volume.
+    # "piano" = power curve (out = 127*(in/127)^(1/power)), boosts soft/medium
+    # hits so it plays like a real piano. Tune on the rig:
+    #   power > 3.0  = even stronger low-end boost;  boost > 1.0 = extra flat gain;
+    #   curve: linear + boost 1.3 = simple flat gain instead.
+    velocity:
+      curve: "piano"
+      power: 3.0
+      boost: 1.0
+      floor: 8
 
 osc:
   listen_port: 9001

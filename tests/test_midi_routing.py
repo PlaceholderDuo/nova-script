@@ -193,6 +193,99 @@ def test_alesis_v25_forwarding():
     print("  OK keys/knobs/mod-wheel/pitch-bend forward; mod wheel remapped")
 
 
+def test_alesis_v25_velocity_default_is_identity():
+    print("=== V25 default velocity = linear passthrough ===")
+    from src.controllers.alesis_v25 import AlesisV25
+
+    class FakeMgr:
+        def __init__(self):
+            self.sent = []
+            self.regs = []
+            self.cb = None
+
+        def register_input(self, name, cb, pattern=None):
+            self.regs.append(("in", name, pattern))
+            self.cb = cb
+
+        def register_output(self, name):
+            self.regs.append(("out", name))
+
+        def send_message(self, tgt, msg):
+            self.sent.append((tgt, msg))
+
+    m = FakeMgr()
+    v = AlesisV25(m, "M-Track Plus", cc_remap={1: 16})
+    m.cb([0x90, 60, 70])
+    assert m.sent[-1] == ("M-Track Plus", [0x90, 60, 70])
+    print("  OK velocities pass through untouched by default")
+
+
+def test_alesis_v25_velocity_piano_curve():
+    print("=== V25 piano curve boosts soft/medium hits, preserves hard ===")
+    from src.controllers.alesis_v25 import AlesisV25
+
+    class FakeMgr:
+        def __init__(self):
+            self.sent = []
+            self.regs = []
+            self.cb = None
+
+        def register_input(self, name, cb, pattern=None):
+            self.regs.append(("in", name, pattern))
+            self.cb = cb
+
+        def register_output(self, name):
+            self.regs.append(("out", name))
+
+        def send_message(self, tgt, msg):
+            self.sent.append((tgt, list(msg)))
+
+    m = FakeMgr()
+    v = AlesisV25(m, "M-Track Plus",
+                  cc_remap={1: 16},
+                  velocity={"curve": "piano", "power": 2.0, "boost": 1.0, "floor": 8})
+
+    m.cb([0x90, 60, 40])        # soft hit -> boosted well above 40
+    assert m.sent[-1][1][2] == 71, f"got {m.sent[-1][1][2]}, expected 71"
+    m.cb([0x90, 62, 127])       # full force stays maxed
+    assert m.sent[-1][1][2] == 127
+    m.cb([0x90, 60, 0])         # running-status note-off (vel 0) stays 0
+    assert m.sent[-1][1][2] == 0
+    m.cb([0xB0, 1, 64])         # CCs (mod wheel) untouched by velocity curve
+    assert m.sent[-1][1] == [0xB0, 16, 64]
+    print("  OK soft boosted (40->71), 127 intact, note-off 0, CCs untouched")
+
+
+def test_alesis_v25_velocity_linear_boost_clamp():
+    print("=== V25 linear curve with flat gain clamps at 127 ===")
+    from src.controllers.alesis_v25 import AlesisV25
+
+    class FakeMgr:
+        def __init__(self):
+            self.sent = []
+            self.regs = []
+            self.cb = None
+
+        def register_input(self, name, cb, pattern=None):
+            self.regs.append(("in", name, pattern))
+            self.cb = cb
+
+        def register_output(self, name):
+            self.regs.append(("out", name))
+
+        def send_message(self, tgt, msg):
+            self.sent.append((tgt, list(msg)))
+
+    m = FakeMgr()
+    v = AlesisV25(m, "M-Track Plus", velocity={"curve": "linear", "boost": 1.3})
+
+    m.cb([0x90, 60, 100])
+    assert m.sent[-1][1][2] == 127, "100*1.3 must clamp to 127"
+    m.cb([0x90, 60, 40])
+    assert m.sent[-1][1][2] == 52, "round(40*1.3)=52 expected"
+    print("  OK linear boost: 100->127, 40->52")
+
+
 def test_input_output_only_registration():
     print("=== input-only / output-only device registration ===")
     from src.midi.manager import MidiManager
@@ -217,5 +310,8 @@ if __name__ == "__main__":
     test_sequencer_notes_and_offs_to_force()
     test_sequencer_off_on_same_note_as_on()
     test_alesis_v25_forwarding()
+    test_alesis_v25_velocity_default_is_identity()
+    test_alesis_v25_velocity_piano_curve()
+    test_alesis_v25_velocity_linear_boost_clamp()
     test_input_output_only_registration()
     print("\nOK ALL MIDI ROUTING TESTS PASSED")
