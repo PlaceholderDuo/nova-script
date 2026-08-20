@@ -78,6 +78,7 @@ class LightShowMode(Mode):
         self._hint_max = 0.0
         self._hint_last_tick = 0.0
         self._bpm = 120.0
+        self._initialized = False
 
     # -- engine hooks ------------------------------------------------------ #
 
@@ -101,12 +102,14 @@ class LightShowMode(Mode):
     # -- lifecycle --------------------------------------------------------- #
 
     def enter(self):
-        self._held_mood = None
-        self._peak_return_to = None
-        self._blink_on = False
-        self._pending_pulse = None
-        self._pulse_return_to = None
-        self._pulse_remaining_beats = 0
+        if not self._initialized:
+            self._held_mood = None
+            self._peak_return_to = None
+            self._blink_on = False
+            self._pending_pulse = None
+            self._pulse_return_to = None
+            self._pulse_remaining_beats = 0
+            self._initialized = True
         self._entry_row = 0
         self._entry_accum = 0.0
         self._clear_hint()
@@ -116,6 +119,7 @@ class LightShowMode(Mode):
         self.clear_pages()
         self.clear()
         self.commit()
+        self._initialized = False
         self._send_event({"event": "FORCE_LOOK", "look": None})
 
     def tick(self, delta_ms: float):

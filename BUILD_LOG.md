@@ -3262,3 +3262,28 @@ two-row direct cue bank at the bottom of the Launchpad.
 ### Verification
 - Direct cue rendering and feed emission covered by `test_light_show.py`.
 - Relevant nova-script tests remain green after the change.
+
+## Entry #54 — 2026-08-20 — Light Show enter() re-entrancy fix + full-chain test
+
+### Bug found (live-show critical)
+The engine flashes a pad on press and calls `active_mode.enter()` ~120ms later
+to clear the flash (`engine.py _tick_press_feedback`). `LightShowMode.enter()`
+previously reset ALL manual cue state — so a pending pulse or a held peak was
+silently canceled ~120ms after any press. At slow tempos the next beat could
+arrive after the wipe, so a queued blinder/strobe never fired.
+
+### Fix
+- `enter()` is now re-entry safe: full state reset only on the first enter
+  after construction/exit (`_initialized` flag); the press-flash replay just
+  re-renders and preserves `_pending_pulse`, `_held_mood`, `_pulse_return_to`.
+- `exit()` resets `_initialized` so a real mode-switch away and back starts
+  fresh (and still sends `FORCE_LOOK null` = release to auto).
+
+### Tests
+- `tests/test_light_show_integration.py` (NEW): virtual Engine →
+  LightShowMode → temp feed → lighting `ShowDriver` → recorded scenes,
+  covering Base/Blinder cues, beat-quantized pulse, leaving-the-page =
+  release-to-auto, and release restoring the auto target.
+- `tests/conftest.py` (NEW): `collect_ignore` for `test_e2e_virtualizer.py`
+  (standalone subprocess harness, not pytest-structured; run directly).
+- Full nova suite: **99 passed**.
