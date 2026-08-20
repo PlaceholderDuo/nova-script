@@ -185,14 +185,16 @@ def test_top_row_shortcuts():
     print("TEST 3: Top-row shortcut buttons")
     print("=" * 60)
     h = EngineHarness({"ui": {"default_mode": "performance"}})
-    # Top-row shortcuts are config-driven (Entry #40): ctrl N reads the menu's
-    # items[N-200]. Engine default menu: 0=PERF 1=CLIP 2=SEQ 3=MIX 4=INST 5=ARP.
+    # Top-row shortcuts are config-driven: button 2 (ctrl 201) = items[0],
+    # button 3 (202) = items[1], etc. Engine default menu: 0=PERF 1=CLIP 2=SEQ
+    # 3=MIX 4=INST 5=ARP.
     expect = {
-        201: "clip_launcher",
-        202: "sequencer",
-        203: "mixer",
-        204: "instrument",
-        205: "arp_edit",
+        201: "performance",
+        202: "clip_launcher",
+        203: "sequencer",
+        204: "mixer",
+        205: "instrument",
+        206: "arp_edit",
     }
     for cid, name in expect.items():
         h.tap_ctrl(cid)

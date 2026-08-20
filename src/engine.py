@@ -289,7 +289,7 @@ class Engine:
         light_show = LightShowMode(
             self.grid,
             self.controllers["Launchpad Mini"],
-            config=self.config.get("light_show"),
+            config=self.config.get("modes", {}).get("light_show", {}),
         )
         self.mode_manager.register(light_show)
 
@@ -297,6 +297,7 @@ class Engine:
 
         default_mode = self.config.get("ui", {}).get("default_mode", "performance")
         self.mode_manager.switch_to(default_mode)
+        self._render_top_row_shortcuts()
 
     def _enter_arp_edit(self, from_menu: bool = False):
         inst = self.mode_manager._modes.get("instrument")
@@ -330,6 +331,7 @@ class Engine:
                 on_connect()
             if self.mode_manager and self.mode_manager.active_mode:
                 self.mode_manager.active_mode.enter()
+            self._render_top_row_shortcuts()
 
     def _on_device_disconnect(self, device_name: str):
         logger.warning(f"[ENGINE] Device disconnected: {device_name}")
@@ -395,10 +397,10 @@ class Engine:
                 return
 
         if is_press and not self.overlay.is_overlay_active:
-            if 201 <= event.control_id <= 208:
-                top_idx = event.control_id - 200
+            if 201 <= event.control_id <= 207:
+                top_idx = event.control_id - 201
                 menu_mode = self.mode_manager._modes.get("menu")
-                if menu_mode and top_idx < len(menu_mode._items):
+                if menu_mode and 0 <= top_idx < len(menu_mode._items):
                     item = menu_mode._items[top_idx]
                     if "mode" in item and item["mode"] in self.mode_manager._modes:
                         self.mode_manager.switch_to(item["mode"])
@@ -426,6 +428,21 @@ class Engine:
         at_home = self.mode_manager and self.mode_manager.active_mode_name == "performance"
         color = LogicalColor.AMBER_HIGH if at_home else LogicalColor.GREEN_HIGH
         lp.send_top_row_led(0, color)
+
+    def _render_top_row_shortcuts(self):
+        """Light top-row buttons 2-8 as mode shortcuts (button 1 is HOME).
+        Reads the menu config so the pads always show what each button does."""
+        lp = self.controllers.get("Launchpad Mini")
+        if lp is None:
+            return
+        menu_mode = self.mode_manager._modes.get("menu") if self.mode_manager else None
+        if not menu_mode:
+            return
+        for i, item in enumerate(menu_mode._items):
+            if i >= 7:
+                break
+            color = LogicalColor[item.get("color", "AMBER_HIGH")]
+            lp.send_top_row_led(i + 1, color)
 
     def _on_beat(self, beat_count: int):
         self._beat_led_on = True

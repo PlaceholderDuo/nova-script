@@ -1,5 +1,24 @@
 # Nova-Script Build Log
 
+<!-- ════════════════════════════════════════════════════════════════════════
+     🟢 START HERE — session handoff (2026-08-14)
+     New session? Read these entries first (complete current state):
+
+       1. Entry #50 — Launchpad Light Show verified on hardware + rod test
+       2. Entry #49 — Lighting Revamp: Rod Discovery + Design Quiz + "Sits and
+                      Vibes" engine (this session's big arc)
+
+     The lighting-engine counterpart is in the SEPARATE repo
+     ~/Documents/projects/lighting-system/BUILD_LOG.md — read its "START HERE"
+     header too. They're two halves of the same feature.
+
+     nova-script owns: Light Show mode (Launchpad UI), per-song mood plumbing
+     (songs.js + tui.js emit genre/mood into /tmp/lighting_feed).
+     lighting-system owns: the engine, looks/effects/palettes, rod discovery,
+     govee LAN + BLE, the DMX/QLC+ pipeline.
+
+     Next up: look-revamp CONTENT (see lighting-system BUILD_LOG wrap-up).
+     ════════════════════════════════════════════════════════════════════════ -->
 
 ---
 
@@ -2958,6 +2977,162 @@ Knobs stay native (CC20-23). Run `python -m src.main` (or `nova-script list-port
 ### Test Status
 Unchanged from Entry #46 (106 comprehensive + midi_routing + all suites green) — this session was hardware verification only, no code changes.
 
+## Entry #49 — 2026-08-14 — Lighting Revamp: Rod Discovery + Design Quiz + "Sits and Vibes" Engine
+
+### Source
+Daniel via Claude Code. Four focused chunks: (1) rod discovery hardening, (2)
+lighting research + deep design quiz, (3) the "10x quality" look-library revamp
+engine, (4) Launchpad wire-up (still pending). This entry covers 1–3.
+
+### Chunk 1 — Rod discovery (lighting-system)
+Real-hardware MiFi test not possible today (home network, no rods/MiFi), so
+hardened the code instead. **Found + fixed two real bugs in `discover_rig.py`:**
+- `replace_ip` only matched quoted IPs; empty slots are `"ip": null`, so
+  **adopting a last-minute rod never wrote its IP** (device/tag written, IP
+  stayed null). Regex now matches `null` too.
+- Exit code counted stale IPs as "live"; now only counts IPs assigned this run,
+  so `found=[]` → exit 1 correctly.
+Extracted the merge logic into a testable `update_rig()` and added
+`engine/tests/test_discover_rig.py` (7 tests: MAC re-match after subnet change,
+last-minute adoption, mixed, no-devices, formatting, no-double-adopt).
+
+### Chunk 2 — Research + deep Design Quiz (lighting-system)
+Compiled `docs/LOOK-REVAMP-BRIEF.md` (430 lines): diagnosis of the "jumpy"
+complaint, research applied to this rig, and a live answers record. Grounded in
+6 sources (UKING blinder + small-stage guides, Sundrax movement/rhythm, Klarity
+warm-cool transitions, Wikipedia, Learn Stage Lighting).
+
+**The governing rule (Daniel):** *"Good pro stage lighting sits and vibes — it
+doesn't jump around like party lights."* Hold looks, breathe/drift/wash inside
+them; stillness makes the peaks land.
+
+**Design decisions captured (multiple quiz rounds):**
+- 5 moods = *feelings*, not genres (Standard / High Energy / EDM / Acoustic
+  Candlelight / Ballad).
+- Energy axis = 3 levels + separate Peak; energy = the full package
+  (brightness + motion + warmth).
+- Manual mode = **mood on one Launchpad axis, energy on the other.**
+- Hard rules: no red+blue same scene (cops near road), no strobe/flashy (drunk
+  crowd + festival photosensitivity practice), don't distract drivers, halogen
+  curves everywhere (`on → 10%`, never `on → off` except deliberate blackout),
+  blinder warms as it dims (never pure white except full), key lamps always
+  warm-white, rods = quiet atmosphere layer.
+- Vibing primitives = breathing + color drift + spatial wash (deep-dived in
+  §2.6, combined into a mood matrix §2.6.4).
+- EDM = "takes the viewer on a journey" (tension/release, high-contrast↔
+  monochrome, BPM-synced strobes that follow the Force tempo, low valleys
+  building to extreme peaks) — deep-dived in §2.7.
+- Auto: genre drives mood, overridable per song via a `mood:` metadata line;
+  auto changes = "hold + vibe within", crossfade on section boundaries.
+
+### Chunk 3 — Lighting Revamp (lighting-system + iPhoneLiveServer)
+
+**`engine/lighting_engine/engine.py`:**
+- **Halogen blinder** — `_apply_halogen()` (fast smoothstep attack, slow trailing
+  decay to a dim floor) + `_halogen_color()` (tungsten amber→white, warms as it
+  dims). `render()` honors `effect.curve == "halogen"`.
+- **Pulse gating** — `family: "pulse"` looks excluded below energy 0.85, so the
+  blinder can't leak into a quiet mood.
+- **Mood biasing** — `_style()` merges the mood's palette/look/motion/contrast
+  over the genre style.
+
+**`engine/lighting_engine/state.py`:** `MOODS` (5 moods × palette/look/motion/
+saturation/contrast) + `mood_for(genre)` seed map; `SongProfile.mood`.
+
+**`engine/lighting_engine/driver.py`:** auto-path crossfade on look change
+(`default_fade_ms` 2000ms); fixed latent `_fade_until` bug (was set even when no
+fade happened); `on_song_start` accepts `mood` (falls back to `mood_for(genre)`).
+
+**`engine/effects/effects.json`:** new `halogen_blinder` effect.
+
+**`engine/looks/looks.json`:** `Crowd Blinder` → `halogen_blinder`, gated to
+energy 0.85–1.0 / `final_chorus`/`big_moment`/`solo`.
+
+**`engine/showfeed.py`:** `SONG_START` passes `mood`.
+
+**iPhoneLiveServer:** `server/api/songs.js` surfaces `mood` (from `meta.json`);
+`scripts/tui.js` emits real genre (from genre-map) + mood on `SONG_START`
+instead of hardcoded `country_rock`. Both `node --check` clean.
+
+### Test Status
+- lighting-system: **45 passed** (was 33) — +5 driver tests (genre→mood, mood
+  override, halogen envelope/color, auto crossfade) + 7 discover_rig.
+- nova-script: light_show suite + `validate_light_config.py` still green.
+- Verified end-to-end: `SONG_START {genre:rock, mood:EDM}` → `Crowd Blinder`
+  renders on the halogen curve `(255,166,72)`→`(255,223,189)`→warm amber.
+- No red+blue risk in any of the 21 palettes.
+
+### Open Items / Next
+1. **Launchpad wire-up (chunk 4)** — boot `start light-runner` + nova-script,
+   menu → LITE, cue scenes on hardware.
+2. **looks.json content rebuild** — the palette/effect-pool content per look is
+   the highest-taste part; not done (proposal pass or palette-by-palette next).
+3. **Per-song `mood:` tags** in `~/ReaperSongs/<Song>/meta.json` — mechanism is
+   ready; add the actual tags.
+4. **Real-hardware verify** of halogen curve + crossfades + rod discovery (MiFi).
+
+## Entry #50 — 2026-08-14 — Launchpad Light Show Verified on Hardware + Rod Test Attempt
+
+### Source
+Daniel via Claude Code. Chunk 4 of the lighting-revamp session: wire the Light
+Show mode to the physical Launchpad and test rod discovery on the venue WiFi.
+
+### Launchpad wire-up — VERIFIED on real hardware
+Added `tests/hardware_light_show.py` — connects the physical Launchpad Mini and
+drives it through the full Light Show lifecycle (no QLC+ / lights needed):
+- **8 scene pads + mood column lit** on enter (rendered via `get_grid_color`).
+- **snap cue** → `FORCE_LOOK` written to the feed with correct `look`/`fade_ms`.
+- **mood switch** (right column A→B) re-renders and resets the current scene.
+- **pulse cue** fires on-beat (`pulse: true`), then returns to the prior *scene*
+  (fixed a weak earlier assertion that two scenes mapped to the same look and
+  masked the return). Verified `_current_scene` transitions Candle→Swell→Candle.
+- **exit** clears the grid and releases to auto (`FORCE_LOOK {look: null}`).
+
+Full engine boot (`nova-script live-show`) also verified: Launchpad connects,
+all 9 modes register incl. `light_show`, no errors. End-to-end producer→consumer
+confirmed: Launchpad feed → `showfeed.py` → engine renders `Crowd Blinder` on
+the halogen curve `(255,166,72)`.
+
+### Rod test attempt (venue WiFi)
+Target: the single Govee rod on the "PeaceFreak" WiFi. Blocked by networking:
+- The Mac is on the **home** network (192.168.1.x, `router.home.local`), not
+  PeaceFreak. Rod discovery on 192.168.1.x finds nothing.
+- macOS redacts all SSIDs in CLI output (`<redacted>` in `system_profiler`,
+  `wdutil`, `ipconfig`), so the current/available SSID list can't be confirmed
+  from the shell.
+- `networksetup -setairportnetwork en0 peacefreak` fails with -3900 (network
+  not joined — likely out of range or wrong SSID). Password IS in the System
+  keychain (acct="peacefreak", "AirPort network password").
+
+**Next:** join PeaceFreak manually (menu bar Wi-Fi) or confirm the rod's actual
+network, then re-run `engine/discover_rig.py --timeout 6`.
+
+### Rod test — RESOLVED on second attempt
+Daniel re-joined the light to the network; the rod was actually reachable on the
+**home** network (192.168.1.x), not PeaceFreak. `discover_rig.py --timeout 8`
+found it via the **unicast sweep** and auto-adopted it:
+
+```
+found: SKU=H802A  IP=192.168.1.234  device=11:2A:DB:E6:45:46:64:54
+adopted GOVEE_R1 -> 192.168.1.234 (device 11:2A:DB:E6:45:46:64:54)
+```
+
+This validates both chunk-1 fixes on real hardware:
+- **Unicast sweep** discovered the rod (client-isolation-proof path).
+- **Adoption wrote the IP** (the `replace_ip` null-handling fix — the old code
+  would have left `"ip": null`).
+
+Full command round-trip verified: `devStatus` query returned `onOff:1,
+brightness:100`; `FORCE_LOOK "Warm Ambient"` via `showfeed --backends govee`
+turned it amber `(178,67,11)`; `Blackout` returned it to `(0,0,0)`.
+
+### Warm white ladder (lighting-system palettes)
+Tuned live on the rod → 4-rung warm ladder: `neutral_white` (200,200,200) →
+`warm_white` (255,185,115 @3000K) → `candle_white` (255,140,45 @2300K) →
+`candle_warm` (255,110,20 @1800K, new). Looks `Acoustic Hush`/`Intimate`/
+`Warm Ambient` re-pointed to candle palettes; Acoustic Candlelight + Ballad
+moods re-biased. Full details in lighting-system BUILD_LOG.
+
 ## Entry #51 — 2026-08-14 — Alesis V25 Velocity Curve (Piano Feel)
 
 ### Source
@@ -3024,3 +3199,49 @@ Tuning on the rig: raise `power` for a stronger boost, or switch to
 - Hardware check on the rig: play the V25 keys → confirm the Force gets the
   boosted velocities (and the mod wheel still arrives as CC16). Tune `power`
   if the low-end still feels weak.
+
+## Entry #52 — 2026-08-15 — Light Show Mode v2: Mood-Row Layout + Peak Hold + Help Text
+
+### Source
+Daniel via Claude Code. Live-hardware session: got manual lighting control on the
+Launchpad working for the show. Redesigned `LightShowMode` to be self-explanatory.
+
+### Fixed: config bug (the "pads not lighting up" root cause)
+The `light_show` block lived under `modes.light_show` in `live-show.yaml`, but the
+engine read `config.get("light_show")` (top-level) → the mode loaded with
+`moods=[]` and rendered nothing. Changed to
+`config.get("modes", {}).get("light_show", {})`.
+
+### v2 layout (intuitive, no manual needed)
+- **Moods are ROWS** (5 rows top→bottom: Standard / Acoustic Candlelight / EDM /
+  High Energy / Ballad); **8 scenes per mood laid out left→right**.
+- **Right column A–E** = mood identity light (amber/red/green × brightness) AND a
+  **momentary PEAK button**: hold → fire that mood's peak (blinder/sparkle,
+  tailored per mood), button blinks at BPM while held, release → return to the
+  prior scene. Peak looks are config (`peak:` per mood in live-show.yaml).
+- **Scene pads**: amber = snap (hold), red = pulse (burst + auto-return), green =
+  the currently-active scene. Pulse auto-return is preserved (beat-quantized via
+  `on_beat`).
+- **Help text**: replaced the HUD-overlay scrolling text (hard to read, replaced
+  the grid, consumed presses) with an **in-grid 5×5 scrolling hint in RED** —
+  same glyph style as the guitar screen. Shows the scene name (or "<mood> PEAK").
+- **Entry sweep** animation reveals mood rows top→bottom on enter.
+
+### Top-row mode shortcuts (the other "buttons not lighting up" issue)
+Buttons 2–8 were used as mode shortcuts but their LEDs were never lit. Added
+`_render_top_row_shortcuts()` (lights buttons 2–8 in each menu item's color,
+called on setup + reconnect) and fixed an off-by-one in the shortcut mapping
+(button 2 = items[0], not items[1]; PERF is now reachable from the top row).
+
+### Tests
+- `tests/test_light_show.py` rewritten for v2 (10 tests: mood rows, snap/pulse
+  cue, peak hold+release, grid-event routing, help text, render colors).
+- `test_engine_integration.py::test_top_row_shortcuts` updated to the corrected
+  button→item mapping.
+- Full suite: 97 passed (1 pre-existing virtualizer-e2e error, needs its backend).
+
+### Notes
+- Peak `look` choices are first-pass taste (`live-show.yaml` → `peak:`); easy to
+  tune per mood.
+- BPM clock falls back to Internal 120 (no Akai Force on USB) — pulse/peak blink
+  runs at that tempo.
