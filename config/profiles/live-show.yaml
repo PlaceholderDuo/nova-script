@@ -61,6 +61,26 @@ modes:
 
   light_show:
     feed: /tmp/lighting_feed
+    # Direct busking row: the first row is intentionally semantic rather than
+    # mood-specific. These are the cues an operator needs during a surprise
+    # song or when automatic timing is unavailable.
+    direct_cues:
+      - {name: "Base",     look: "Standard Performance", cue: snap,  fade_ms: 800}
+      - {name: "Verse",    look: "Warm Ambient",         cue: snap,  fade_ms: 1200}
+      - {name: "Build",    look: "Sparkle Buildup",      cue: snap,  fade_ms: 600}
+      - {name: "Chorus",   look: "Power Chorus",         cue: snap,  fade_ms: 500}
+      - {name: "High",     look: "High Energy",          cue: snap,  fade_ms: 400}
+      - {name: "Solo",     look: "Guitar Solo Peak",     cue: snap,  fade_ms: 500}
+      - {name: "Glimmer",  look: "Grand Finale Sparkle", cue: pulse, fade_ms: 120, pulse_beats: 2}
+      - {name: "Blackout", look: "Blackout",             cue: snap,  fade_ms: 400}
+      - {name: "Warm",     look: "Warm Ambient",         cue: snap,  fade_ms: 1000}
+      - {name: "Wide",     look: "Country Rock Wide",    cue: snap,  fade_ms: 500}
+      - {name: "Drum",     look: "Drum Heavy",           cue: pulse, fade_ms: 150, pulse_beats: 2}
+      - {name: "Strobe",   look: "Drum Heavy",           cue: pulse, fade_ms: 100, pulse_beats: 1}
+      - {name: "Blinder",  look: "Crowd Blinder",        cue: pulse, fade_ms: 100, pulse_beats: 1}
+      - {name: "Finale",   look: "Grand Finale Sparkle", cue: pulse, fade_ms: 150, pulse_beats: 4}
+      - {name: "Crowd",    look: "Crowd",                cue: snap,  fade_ms: 500}
+      - {name: "Cool",     look: "Cool Ambient",         cue: snap,  fade_ms: 1000}
     # Moods are ROWS (5 rows); 8 scenes per mood laid out left->right.
     # Right column A-E = mood identity light + momentary PEAK button (hold =
     # fire `peak` look, blink at BPM, release = return to the prior scene).

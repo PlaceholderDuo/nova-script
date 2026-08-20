@@ -3245,3 +3245,20 @@ called on setup + reconnect) and fixed an off-by-one in the shortcut mapping
   tune per mood.
 - BPM clock falls back to Internal 120 (no Akai Force on USB) — pulse/peak blink
   runs at that tempo.
+
+## Entry #53 — 2026-08-20 — Direct semantic busking bank
+
+### Purpose
+The mood-row layout is useful for exploration but did not give a live operator
+obvious actions such as chorus, glimmer, strobe, blinder, and blackout. Added a
+two-row direct cue bank at the bottom of the Launchpad.
+
+### Direct cues
+- Row 0: Base, Verse, Build, Chorus, High, Solo, Glimmer, Blackout.
+- Row 1: Warm, Wide, Drum, Strobe, Blinder, Finale, Crowd, Cool.
+- Pulse cues remain beat-quantized and return to the prior scene.
+- Mood rows and A-E mood peak buttons remain available above the direct bank.
+
+### Verification
+- Direct cue rendering and feed emission covered by `test_light_show.py`.
+- Relevant nova-script tests remain green after the change.

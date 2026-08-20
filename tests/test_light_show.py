@@ -111,6 +111,23 @@ def test_grid_event_routes_to_mood_row():
     print("  OK grid press on mood row cues the right scene")
 
 
+def test_direct_busking_row_has_semantic_cues():
+    m, path = _make_mode()
+    m.direct_cues = [
+        {"name": "Base", "look": "LookBase", "cue": "snap", "fade_ms": 800},
+        {"name": "Blinder", "look": "LookBlinder", "cue": "pulse",
+         "fade_ms": 100, "pulse_beats": 1},
+    ]
+    m.enter()
+    m.handle_grid_event(GridEvent(1, 0, True, EventType.GRID_PRESS))
+    m.on_beat(1)
+    ev = _read_feed(path)[-1]
+    assert ev["look"] == "LookBlinder"
+    assert m.grid.get_cell(0, 0) == LogicalColor.AMBER_MED
+    assert m.grid.get_cell(1, 0) == LogicalColor.RED_MED
+    print("  OK direct busking row exposes semantic cues")
+
+
 def test_pulse_fires_on_beat_and_returns():
     m, path = _make_mode()
     m.enter()

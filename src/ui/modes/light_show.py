@@ -36,6 +36,7 @@ MOOD_COLORS = [
 # (top of the right column) lines up with the top mood row. Bottom 3 rows are
 # left free for help text / future.
 MOOD_ROWS = [7, 6, 5, 4, 3]
+DIRECT_ROWS = [0, 1]
 
 SNAP_COLOR = LogicalColor.AMBER_MED
 PULSE_COLOR = LogicalColor.RED_MED
@@ -57,6 +58,7 @@ class LightShowMode(Mode):
         super().__init__("light_show", grid, controller)
         cfg = config or {}
         self.feed_path = cfg.get("feed", feed_path)
+        self.direct_cues = cfg.get("direct_cues") or []
         self.moods = cfg.get("moods") or []
 
         self._current_scene: str | None = None   # active snap scene name
@@ -75,11 +77,13 @@ class LightShowMode(Mode):
         self._hint_scroll = 0.0
         self._hint_max = 0.0
         self._hint_last_tick = 0.0
+        self._bpm = 120.0
 
     # -- engine hooks ------------------------------------------------------ #
 
     def set_bpm(self, bpm: float):
-        pass
+        if bpm and bpm > 0:
+            self._bpm = float(bpm)
 
     def on_beat(self, beat_count: int):
         # Peak button blink at BPM.
@@ -139,6 +143,11 @@ class LightShowMode(Mode):
     def handle_grid_event(self, event: GridEvent):
         if not event.pressed:
             return
+        if event.y in DIRECT_ROWS:
+            cue_idx = DIRECT_ROWS.index(event.y) * 8 + event.x
+            if cue_idx < len(self.direct_cues):
+                self._cue(-1, self.direct_cues[cue_idx])
+            return
         mood_idx = self._row_to_mood(event.y)
         if mood_idx is None or mood_idx >= len(self.moods):
             return
@@ -191,17 +200,15 @@ class LightShowMode(Mode):
 
     def _finish_pulse(self):
         if self._pulse_return_to:
-            for m in self.moods:
-                for s in m.get("scenes") or []:
-                    if s["name"] == self._pulse_return_to:
-                        self._current_scene = s["name"]
-                        self._send_event({
-                            "event": "FORCE_LOOK",
-                            "look": s["look"],
-                            "fade_ms": s.get("fade_ms", 800),
-                            "scene": s["name"],
-                        })
-                        break
+            s = self._find_scene(self._pulse_return_to)
+            if s:
+                self._current_scene = s["name"]
+                self._send_event({
+                    "event": "FORCE_LOOK",
+                    "look": s["look"],
+                    "fade_ms": s.get("fade_ms", 800),
+                    "scene": s["name"],
+                })
         else:
             self._current_scene = None
             self._send_event({"event": "FORCE_LOOK", "look": None})
@@ -232,16 +239,14 @@ class LightShowMode(Mode):
             return
         self._held_mood = None
         if self._peak_return_to:
-            for m in self.moods:
-                for s in m.get("scenes") or []:
-                    if s["name"] == self._peak_return_to:
-                        self._send_event({
-                            "event": "FORCE_LOOK",
-                            "look": s["look"],
-                            "fade_ms": s.get("fade_ms", 800),
-                            "scene": s["name"],
-                        })
-                        break
+            s = self._find_scene(self._peak_return_to)
+            if s:
+                self._send_event({
+                    "event": "FORCE_LOOK",
+                    "look": s["look"],
+                    "fade_ms": s.get("fade_ms", 800),
+                    "scene": s["name"],
+                })
         else:
             self._send_event({"event": "FORCE_LOOK", "look": None})
         self._peak_return_to = None
@@ -274,6 +279,16 @@ class LightShowMode(Mode):
 
     # -- layout ------------------------------------------------------------ #
 
+    def _find_scene(self, name: str):
+        for scene in self.direct_cues:
+            if scene.get("name") == name:
+                return scene
+        for mood in self.moods:
+            for scene in mood.get("scenes") or []:
+                if scene.get("name") == name:
+                    return scene
+        return None
+
     def _row_to_mood(self, y: int) -> int | None:
         try:
             return MOOD_ROWS.index(y)
@@ -305,6 +320,16 @@ class LightShowMode(Mode):
         self.commit()
 
     def _render_scene_grid(self):
+        for row_idx, row in enumerate(DIRECT_ROWS):
+            for x, scene in enumerate(self.direct_cues[row_idx * 8:(row_idx + 1) * 8]):
+                if scene["name"] == self._current_scene:
+                    color = ACTIVE_COLOR
+                elif scene.get("cue") == "pulse":
+                    color = PULSE_COLOR
+                else:
+                    color = SNAP_COLOR
+                self.grid.set_cell(x, row, color)
+
         for mood_idx, mood in enumerate(self.moods):
             y = MOOD_ROWS[mood_idx]
             if mood_idx >= self._entry_row:
