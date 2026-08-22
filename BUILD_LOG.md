@@ -3287,3 +3287,7 @@ arrive after the wipe, so a queued blinder/strobe never fired.
 - `tests/conftest.py` (NEW): `collect_ignore` for `test_e2e_virtualizer.py`
   (standalone subprocess harness, not pytest-structured; run directly).
 - Full nova suite: **99 passed**.
+
+> **Cross-repo session handoff:** full 2026-08-20 handoff (sync, manual busking,
+> test state, run instructions, deferred rods-hot-join) lives at the TOP of
+> `lighting-system/BUILD_LOG.md`. Nova manual-mode state is summarized there.
